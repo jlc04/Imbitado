@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>EleganteRSVP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&family=Jost:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAF7F0; --paper-deep:#F1EBDD; --ink:#23201B;
+    --forest:#1F2E23; --forest-deep:#152019; --gold:#B8935F; --gold-soft:#E4D2B0;
+    --rose:#C1707A; --line:#DDD3BE; --white:#fff; --muted:#8a8272;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Jost',sans-serif;font-weight:300;-webkit-text-size-adjust:100%;}
+  .hide{display:none !important;}
+  .app{max-width:1180px;margin:0 auto;padding:20px 16px 70px;}
+  @media(min-width:700px){.app{padding:26px 24px 80px;}}
+
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+  .brand{font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--forest-deep);cursor:pointer;}
+  .brand em{font-style:italic;color:var(--gold);font-weight:400;}
+  .muted-link{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;}
+  .btn{border:1px solid var(--forest-deep);background:var(--forest-deep);color:var(--paper);border-radius:9px;padding:10px 16px;font-size:12.5px;letter-spacing:.03em;cursor:pointer;}
+  .btn.secondary{background:transparent;color:var(--forest-deep);}
+  .btn.danger{background:transparent;color:var(--rose);border-color:var(--rose);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+  /* ---------- events home ---------- */
+  .event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:18px;}
+  .event-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px;cursor:pointer;}
+  .event-card:hover{border-color:var(--gold);}
+  .event-card h3{font-family:'Cormorant Garamond',serif;font-size:19px;margin:0 0 6px;font-weight:600;color:var(--forest-deep);}
+  .event-card .meta{font-size:11px;color:var(--muted);margin-bottom:10px;}
+  .status-pill{display:inline-block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;}
+  .status-pill.draft{background:#F2ECD8;color:#8A6F2E;}
+  .status-pill.published{background:#E4EEE3;color:#2C5C3A;}
+  .event-card .rc{font-size:12px;color:var(--muted);margin-top:8px;}
+  .new-card{border:1.5px dashed var(--line);border-radius:14px;padding:18px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;font-size:13px;min-height:100px;}
+  .new-card:hover{border-color:var(--gold);color:var(--forest-deep);}
+  .empty-state{padding:50px 20px;text-align:center;color:var(--muted);font-size:13px;}
+
+  /* ---------- editor shell ---------- */
+  .editor-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .editor-title-block h1{font-family:'Cormorant Garamond',serif;font-size:26px;margin:0 0 4px;font-weight:600;color:var(--forest-deep);}
+  .editor-title-block .sub{font-size:12px;color:var(--muted);}
+  .apptabs{display:flex;gap:4px;background:var(--paper-deep);padding:4px;border-radius:999px;border:1px solid var(--line);flex-wrap:wrap;margin-bottom:16px;}
+  .apptab-btn{border:none;background:transparent;padding:8px 14px;border-radius:999px;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;color:var(--ink);opacity:.55;}
+  .apptab-btn.active{background:var(--forest-deep);color:var(--paper);opacity:1;}
+
+  .panel{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .panel h4{font-family:'Cormorant Garamond',serif;font-size:17px;margin:0 0 12px;font-weight:600;color:var(--forest-deep);}
+  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media(max-width:560px){.field-grid{grid-template-columns:1fr;}}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .field input, .field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Jost',sans-serif;}
+
+  .save-bar{position:sticky;bottom:0;background:var(--paper);border-top:1px solid var(--line);padding:12px 0;display:flex;justify-content:flex-end;gap:8px;margin-top:10px;z-index:5;}
+  .save-status{font-size:11px;color:var(--muted);align-self:center;margin-right:auto;}
+
+  /* ---------- theme row ---------- */
+  .theme-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .theme-swatch{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid transparent;box-shadow:0 0 0 1px var(--line);}
+  .theme-swatch.active{border-color:var(--gold);box-shadow:0 0 0 2px var(--white),0 0 0 4px var(--gold);}
+  .theme-item{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .theme-swatch-label{font-size:9px;text-align:center;color:var(--muted);}
+  .custom-panel{display:flex;gap:8px;align-items:center;background:var(--paper-deep);border:1px solid var(--line);border-radius:10px;padding:8px 12px;}
+  .custom-panel label{font-size:10px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .custom-panel input[type=color]{width:26px;height:26px;border:none;padding:0;background:none;cursor:pointer;}
+
+  /* ---------- builder ---------- */
+  .templates{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .templates span{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:2px;}
+  .tpl-btn{border:1px solid var(--line);background:var(--white);padding:7px 13px;border-radius:999px;font-size:12px;cursor:pointer;}
+  .builder-grid{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;}
+  @media(max-width:800px){.builder-grid{grid-template-columns:1fr;}}
+  .type-list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto;}
+  .type-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:8px;background:var(--paper);}
+  .type-item:hover{border-color:var(--gold);background:var(--paper-deep);}
+  .canvas{min-height:160px;display:flex;flex-direction:column;gap:10px;}
+  .qcard{border:1px solid var(--line);border-radius:12px;background:var(--white);padding:14px 16px;position:relative;}
+  .qcard.dragging{opacity:.4;}
+  .qcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .qcard .badge{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);background:var(--gold-soft);padding:3px 8px;border-radius:999px;}
+  .qcard .qtitle-input{width:100%;border:none;border-bottom:1px solid transparent;font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;padding:4px 0;background:transparent;margin-top:6px;}
+  .qcard .qtitle-input:focus{outline:none;border-color:var(--gold);}
+  .qcard .qhelp-input{width:100%;border:none;font-size:12px;color:var(--muted);background:transparent;padding:2px 0;}
+  .qcard .qhelp-input:focus{outline:none;}
+  .qcard .actions{display:flex;gap:6px;}
+  .icon-btn{border:1px solid var(--line);background:var(--white);width:26px;height:26px;border-radius:7px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--forest-deep);}
+  .icon-btn:hover{border-color:var(--gold);}
+  .qbody{margin-top:10px;}
+  .opt-row{display:flex;gap:6px;margin-bottom:6px;align-items:center;}
+  .opt-row input{flex:1;border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;}
+  .add-opt{border:1px dashed var(--gold);background:transparent;color:var(--forest-deep);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;}
+  .qfoot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #F0EAD9;flex-wrap:wrap;gap:8px;}
+  .req-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);}
+  .cond-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .cond-select{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;color:var(--forest-deep);}
+  .empty-canvas{border:1.5px dashed var(--line);border-radius:14px;padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;}
+  .divider-card{background:var(--paper-deep);text-align:center;padding:10px;font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--forest-deep);}
+
+  /* ---------- invitation ---------- */
+  .invite-wrap{background:var(--forest-deep);border-radius:16px;overflow:hidden;box-shadow:0 24px 50px -25px rgba(21,32,25,.5);max-width:540px;margin:0 auto;}
+  .invite-hero{padding:44px 24px 34px;text-align:center;color:var(--paper);background:radial-gradient(circle at 50% 0%, rgba(184,147,95,.22), transparent 60%),linear-gradient(180deg, var(--forest-deep), var(--forest) 130%);border-bottom:1px solid rgba(228,210,176,.25);}
+  @media(min-width:600px){.invite-hero{padding:56px 40px 40px;}}
+  .eyebrow{font-size:10.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold-soft);margin-bottom:14px;}
+  .invite-hero h1{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:clamp(30px,8vw,46px);line-height:1.1;margin:0 0 6px;word-break:break-word;}
+  .invite-date{margin-top:16px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;letter-spacing:.08em;opacity:.85;}
+  .invite-body{background:var(--paper);padding:26px 20px 34px;}
+  @media(min-width:600px){.invite-body{padding:32px 40px 40px;}}
+  .section-label{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;font-weight:500;}
+  .venue-block p{margin:2px 0;font-size:14.5px;}
+  .venue-block .venue-name{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;}
+  .divider{border:none;border-top:1px solid var(--line);margin:22px 0;}
+  .pv-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;margin-bottom:4px;}
+  .pv-help{font-size:11px;color:var(--muted);margin-bottom:10px;}
+  .pv-field{margin-bottom:16px;}
+  .pv-field label{display:block;font-size:12px;font-weight:500;margin-bottom:6px;color:var(--forest-deep);}
+  .pv-field .req-star{color:var(--rose);}
+  .pv-field input[type=text], .pv-field input[type=number], .pv-field input[type=email],
+  .pv-field input[type=date], .pv-field input[type=time], .pv-field select, .pv-field textarea{
+    width:100%;border:1px solid var(--line);border-radius:8px;padding:11px 12px;font-size:16px;font-family:'Jost',sans-serif;
+  }
+  .pv-pillrow{display:flex;gap:6px;flex-wrap:wrap;}
+  .pv-pill{border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-size:13px;cursor:pointer;}
+  .pv-pill.sel{background:var(--forest-deep);color:var(--paper);border-color:var(--forest-deep);}
+  .pv-checkrow{display:flex;flex-direction:column;gap:7px;}
+  .pv-checkrow label{display:flex;gap:8px;align-items:center;font-weight:400;font-size:13px;}
+  .pv-scale{display:flex;gap:6px;flex-wrap:wrap;}
+  .pv-scale .snum{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;}
+  .pv-scale .snum.sel{background:var(--gold);border-color:var(--gold);color:var(--forest-deep);}
+  .pv-stars{font-size:24px;letter-spacing:6px;cursor:pointer;color:var(--line);}
+  .pv-stars .on{color:var(--gold);}
+  .pv-emoji{font-size:24px;display:flex;gap:12px;}
+  .pv-emoji span{cursor:pointer;opacity:.4;}
+  .pv-emoji span.sel{opacity:1;}
+  .pv-grid{overflow-x:auto;}
+  .pv-grid table{width:100%;border-collapse:collapse;font-size:11px;min-width:320px;}
+  .pv-grid td, .pv-grid th{text-align:center;padding:6px;border-bottom:1px solid var(--line);}
+  .pv-grid th:first-child, .pv-grid td:first-child{text-align:left;}
+  .pv-submit{width:100%;background:var(--forest-deep);color:var(--paper);border:none;padding:15px;border-radius:9px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;margin-top:6px;}
+  .pv-divider{border-top:1px solid var(--line);margin:6px 0 16px;padding-top:10px;font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--forest-deep);}
+  .thankyou{text-align:center;padding:20px 10px 6px;}
+  .thankyou .seal{width:56px;height:56px;border-radius:50%;background:var(--gold);color:var(--forest-deep);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-family:'Cormorant Garamond',serif;font-size:22px;}
+  .thankyou h3{font-family:'Cormorant Garamond',serif;font-size:21px;margin:0 0 6px;}
+  .thankyou p{font-size:13px;color:#5c564a;}
+  .unpublished-note{max-width:480px;margin:60px auto;text-align:center;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:34px 24px;}
+  .unpublished-note h3{font-family:'Cormorant Garamond',serif;color:var(--forest-deep);}
+
+  /* ---------- dashboard ---------- */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:18px;}
+  .stat-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px;}
+  .stat-card .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .stat-card .v{font-family:'IBM Plex Mono',monospace;font-size:25px;color:var(--forest-deep);}
+  .stat-card.hero2{background:linear-gradient(135deg, var(--forest-deep), var(--forest));color:var(--paper);grid-column:span 2;}
+  .stat-card.hero2 .k{color:var(--gold-soft);}
+  .stat-card.hero2 .v{color:var(--paper);font-size:32px;}
+  .stat-card.hero2 .sub{font-size:11px;opacity:.7;margin-top:4px;}
+  .table-wrap{overflow-x:auto;}
+  table.gtable{width:100%;border-collapse:collapse;font-size:12.5px;min-width:480px;}
+  table.gtable th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px;border-bottom:1px solid var(--line);}
+  table.gtable td{padding:10px 9px;border-bottom:1px solid #F0EAD9;vertical-align:top;}
+  .status-badge{padding:3px 10px;border-radius:999px;font-size:11px;display:inline-block;}
+  .status-attending{background:#E4EEE3;color:#2C5C3A;}
+  .status-declined{background:#F4E2E2;color:#9C3B3B;}
+  .status-maybe{background:#F2ECD8;color:#8A6F2E;}
+  .empty-note{font-size:12px;color:var(--muted);padding:14px 0;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .toolbar input, .toolbar select{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;font-family:'Jost',sans-serif;}
+
+  /* ---------- share ---------- */
+  .link-row{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap;}
+  .link-row input{flex:1;min-width:200px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;font-family:'IBM Plex Mono',monospace;background:var(--paper-deep);}
+  .access-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+  .access-row{display:flex;justify-content:space-between;align-items:center;background:var(--paper-deep);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;}
+  .qr-box{border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px;display:inline-block;}
+
+  /* ---------- gate (email-gated dashboard) ---------- */
+  .gate-wrap{max-width:380px;margin:80px auto;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:30px;text-align:center;}
+  .gate-wrap h3{font-family:'Cormorant Garamond',serif;color:var(--forest-deep);}
+  .gate-wrap input{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px 12px;font-size:14px;margin:14px 0;}
+  .gate-error{color:var(--rose);font-size:12px;margin-top:8px;}
+
+  .an-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
+  .an-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px;}
+  .an-card h4{font-family:'Cormorant Garamond',serif;font-size:16px;margin:0 0 10px;font-weight:600;}
+  .bar-row{display:grid;grid-template-columns:80px 1fr 30px;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;}
+  .bar-track{background:var(--paper-deep);border-radius:6px;height:12px;overflow:hidden;}
+  .bar-fill{background:linear-gradient(90deg,var(--forest-deep),var(--gold));height:100%;border-radius:6px;}
+  .loading-note{text-align:center;padding:60px 20px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="loading-note">Loading…</div>
+</div>
+
+<script>
+/* ============================================================
+   Config / API helpers
+   ============================================================ */
+const API = '/api/events';
+async function apiGet(path){ const res = await fetch(path); if(!res.ok) throw new Error('GET '+path+' failed'); return res.json(); }
+async function apiSend(path, method, body){
+  const res = await fetch(path, { method, headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):undefined });
+  if(!res.ok) throw new Error(method+' '+path+' failed');
+  return res.json();
+}
+
+/* ============================================================
+   Question type registry (unchanged from the builder prototype)
+   ============================================================ */
+const QUESTION_TYPES = [
+  {id:'short_answer', label:'Short Answer', ic:'✎', hasOptions:false},
+  {id:'long_answer', label:'Long Answer', ic:'▤', hasOptions:false},
+  {id:'dropdown', label:'Dropdown Menu', ic:'▾', hasOptions:true},
+  {id:'multiple_choice', label:'Multiple Choice', ic:'◉', hasOptions:true},
+  {id:'checkboxes', label:'Checkboxes', ic:'☑', hasOptions:true},
+  {id:'yes_no', label:'Yes / No', ic:'⇄', hasOptions:false},
+  {id:'yes_no_maybe', label:'Yes / No / Maybe', ic:'⇄', hasOptions:false},
+  {id:'number', label:'Number Input', ic:'#', hasOptions:false},
+  {id:'email', label:'Email Address', ic:'@', hasOptions:false},
+  {id:'phone', label:'Phone Number', ic:'☎', hasOptions:false},
+  {id:'date', label:'Date Picker', ic:'📅', hasOptions:false},
+  {id:'time', label:'Time Picker', ic:'⏱', hasOptions:false},
+  {id:'address', label:'Address', ic:'⌂', hasOptions:false},
+  {id:'file_upload', label:'File Upload', ic:'⇪', hasOptions:false},
+  {id:'rating', label:'Rating (1–5 / custom)', ic:'★', hasOptions:false},
+  {id:'star_rating', label:'Star Rating', ic:'✦', hasOptions:false},
+  {id:'emoji_rating', label:'Emoji Rating', ic:'☺', hasOptions:false},
+  {id:'linear_scale', label:'Linear Scale', ic:'—', hasOptions:false},
+  {id:'mc_grid', label:'Multiple Choice Grid', ic:'▦', hasOptions:'grid'},
+  {id:'checkbox_grid', label:'Checkbox Grid', ic:'▦', hasOptions:'grid'},
+  {id:'section_divider', label:'Section Divider', ic:'―', hasOptions:false},
+  {id:'title_block', label:'Title & Description', ic:'¶', hasOptions:false},
+];
+const typeMeta = id => QUESTION_TYPES.find(t=>t.id===id);
+function newQuestion(typeId){
+  const base = { id:'q_'+Date.now()+'_'+Math.floor(Math.random()*999), type:typeId, title:typeMeta(typeId).label, help:'', required:false,
+    options:['Option 1','Option 2'], gridRows:['Row 1','Row 2'], gridCols:['Col 1','Col 2'], scaleMax:5, condition:null };
+  if(typeId==='section_divider') base.title='New Section';
+  if(typeId==='title_block'){ base.title='Section Title'; base.help='Add a short description here.'; }
+  return base;
+}
+const TEMPLATES = {
+  wedding: [
+    {type:'short_answer', title:'Full Name', required:true},
+    {type:'yes_no_maybe', title:'Will you attend?', required:true},
+    {type:'number', title:'Number of guests', help:'Including yourself', condition:'attend_yes'},
+    {type:'short_answer', title:'Plus One Name(s)', condition:'attend_yes'},
+    {type:'dropdown', title:'Meal Preference', options:['Chicken','Beef','Vegetarian'], condition:'attend_yes'},
+    {type:'long_answer', title:'Dietary Restrictions'},
+    {type:'short_answer', title:'Song Request'},
+    {type:'long_answer', title:'Message for the Couple'},
+  ],
+  birthday: [
+    {type:'short_answer', title:'Full Name', required:true},
+    {type:'yes_no_maybe', title:'Will you attend?', required:true},
+    {type:'number', title:'Number of Guests', condition:'attend_yes'},
+    {type:'short_answer', title:'Favorite Food'},
+    {type:'long_answer', title:'Gift Preferences'},
+  ],
+  corporate: [
+    {type:'short_answer', title:'Full Name', required:true},
+    {type:'short_answer', title:'Company Name'},
+    {type:'short_answer', title:'Job Title'},
+    {type:'dropdown', title:'Meal Preference', options:['Chicken','Beef','Vegetarian']},
+    {type:'checkboxes', title:'Workshop Selection', options:['AI & Data','Leadership','Marketing','Finance']},
+  ],
+  conference: [
+    {type:'short_answer', title:'Full Name', required:true},
+    {type:'checkboxes', title:'Session Selection', options:['Keynote','Workshop A','Workshop B','Panel Discussion']},
+    {type:'yes_no', title:'Accommodation Needed'},
+    {type:'yes_no', title:'Transportation Needed'},
+  ],
+};
+function buildFromTemplate(key){
+  const qs = TEMPLATES[key].map(q=>{
+    const nq = newQuestion(q.type); nq.title=q.title;
+    if(q.help) nq.help=q.help; if(q.options) nq.options=q.options; if(q.required) nq.required=true;
+    if(q.condition==='attend_yes') nq._pendingCondition = true;
+    return nq;
+  });
+  const attendQ = qs.find(q=>q.type==='yes_no_maybe');
+  qs.filter(q=>q._pendingCondition).forEach(q=>{ if(attendQ){ q.condition={qid:attendQ.id, equals:'Yes'}; delete q._pendingCondition; } });
+  return qs;
+}
+
+const THEMES = [
+  {id:'forest', name:'Forest & Gold', colors:{paper:'#FAF7F0',paperDeep:'#F1EBDD',ink:'#23201B',forest:'#1F2E23',forestDeep:'#152019',gold:'#B8935F',goldSoft:'#E4D2B0',rose:'#C1707A',line:'#DDD3BE'}},
+  {id:'blush', name:'Blush Romance', colors:{paper:'#FBF3F0',paperDeep:'#F5E4DE',ink:'#3A2620',forest:'#7B3B42',forestDeep:'#5C2A30',gold:'#D9A566',goldSoft:'#F0D9B5',rose:'#C1707A',line:'#EBD7CE'}},
+  {id:'midnight', name:'Midnight Navy', colors:{paper:'#F4F5F7',paperDeep:'#E7E9EE',ink:'#1B2230',forest:'#1B2A4A',forestDeep:'#101827',gold:'#9FB6D9',goldSoft:'#D9E2EF',rose:'#A9748A',line:'#D8DEE8'}},
+  {id:'sage', name:'Sage Garden', colors:{paper:'#F7F8F0',paperDeep:'#ECEFDD',ink:'#2B3324',forest:'#4A5D3A',forestDeep:'#34432A',gold:'#C7A45C',goldSoft:'#E6DCB8',rose:'#B98567',line:'#DCE3C9'}},
+  {id:'custom', name:'Custom', colors:null},
+];
+function themeSwatchStyle(c){ return `background:linear-gradient(135deg, ${c.forestDeep} 50%, ${c.gold} 50%);`; }
+function applyTheme(colors){
+  if(!colors) return;
+  const root = document.documentElement.style;
+  root.setProperty('--paper', colors.paper); root.setProperty('--paper-deep', colors.paperDeep);
+  root.setProperty('--ink', colors.ink); root.setProperty('--forest', colors.forest);
+  root.setProperty('--forest-deep', colors.forestDeep); root.setProperty('--gold', colors.gold);
+  root.setProperty('--gold-soft', colors.goldSoft); root.setProperty('--rose', colors.rose); root.setProperty('--line', colors.line);
+}
+function resolveTheme(themeObj){
+  if(!themeObj) return THEMES[0].colors;
+  if(themeObj.presetId==='custom' && themeObj.custom) return themeObj.custom;
+  return (THEMES.find(t=>t.id===themeObj.presetId) || THEMES[0]).colors;
+}
+
+function escapeHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function tag(name, attrs){ const el=document.createElement(name); Object.entries(attrs||{}).forEach(([k,v])=>el.setAttribute(k,v)); return el; }
+
+/* ============================================================
+   ROUTER
+   ============================================================ */
+const params = new URLSearchParams(location.search);
+const root = document.getElementById('app');
+
+if(params.get('guest')) renderGuestView(params.get('guest'));
+else if(params.get('dash')) renderDashGate(params.get('dash'));
+else if(params.get('event')) renderEditor(params.get('event'));
+else renderHome();
+
+function goHome(){ location.href = location.pathname; }
+function goEditor(slug){ location.href = '?event=' + encodeURIComponent(slug); }
+
+/* ============================================================
+   HOME — list of events
+   ============================================================ */
+async function renderHome(){
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand">Elegante<em>RSVP</em></div>
+    </div>
+    <h1 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--forest-deep);margin:0 0 4px;">Your events</h1>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 6px;">Create a new event, or open one to keep editing.</p>
+    <div class="event-grid" id="eventGrid"></div>
+  `;
+  const grid = document.getElementById('eventGrid');
+  grid.innerHTML = `<div class="new-card" id="newEventCard">+ New Event</div>`;
+  document.getElementById('newEventCard').addEventListener('click', createEvent);
+
+  try{
+    const { events } = await apiGet(API);
+    events.forEach(ev=>{
+      const card = document.createElement('div');
+      card.className = 'event-card';
+      card.innerHTML = `
+        <span class="status-pill ${ev.status}">${ev.status}</span>
+        <h3 style="margin-top:8px;">${escapeHtml(ev.name)}</h3>
+        <div class="meta">${escapeHtml(ev.event_date||'No date set')}</div>
+        <div class="rc">${ev.response_count} response${ev.response_count===1?'':'s'}</div>
+      `;
+      card.addEventListener('click', ()=> goEditor(ev.slug));
+      grid.appendChild(card);
+    });
+  }catch(e){
+    grid.insertAdjacentHTML('beforeend', `<div class="empty-state">Couldn't load events. Is the D1 database connected?</div>`);
+  }
+}
+async function createEvent(){
+  const name = prompt("Event name (e.g. Maya & Daniel's Wedding):", 'New Event');
+  if(!name) return;
+  try{
+    const { event } = await apiSend(API, 'POST', { name });
+    goEditor(event.slug);
+  }catch(e){ alert('Could not create the event. Check your D1 connection.'); }
+}
+
+/* ============================================================
+   EDITOR — the host's builder + dashboard + share, per event
+   ============================================================ */
+let ev = null;        // current event record from the API
+let form = [];         // parsed questions_json
+let themeObj = null;   // parsed theme_json
+let dirty = false;
+
+async function renderEditor(slug){
+  root.innerHTML = `<div class="loading-note">Loading event…</div>`;
+  let data;
+  try{ data = await apiGet(API+'/'+encodeURIComponent(slug)); }
+  catch(e){ root.innerHTML = `<div class="empty-state">Event not found. <span class="muted-link" onclick="goHome()">Back to events</span></div>`; return; }
+  ev = data.event;
+  form = JSON.parse(ev.questions_json || '[]');
+  themeObj = JSON.parse(ev.theme_json || '{}');
+  applyTheme(resolveTheme(themeObj));
+
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand" onclick="goHome()">Elegante<em>RSVP</em></div>
+      <span class="muted-link" onclick="goHome()">&larr; All events</span>
+    </div>
+    <div class="editor-head">
+      <div class="editor-title-block">
+        <h1 id="titlePreview">${escapeHtml(ev.name)}</h1>
+        <div class="sub">Status: <span class="status-pill ${ev.status}">${ev.status}</span> &nbsp;·&nbsp; ${ev.event_date ? escapeHtml(ev.event_date) : 'No date set'}</div>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="previewBtn">Preview</button>
+        <button class="btn danger" id="deleteBtn">Delete</button>
+      </div>
+    </div>
+    <div class="apptabs">
+      <button class="apptab-btn active" data-tab="details">Details</button>
+      <button class="apptab-btn" data-tab="theme">Theme</button>
+      <button class="apptab-btn" data-tab="questions">Questionnaire</button>
+      <button class="apptab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="apptab-btn" data-tab="share">Share</button>
+    </div>
+    <div id="tabContent"></div>
+    <div class="save-bar">
+      <span class="save-status" id="saveStatus"></span>
+      <button class="btn secondary" id="saveDraftBtn">Save Draft</button>
+      <button class="btn" id="publishBtn">${ev.status==='published' ? 'Update Published Event' : 'Publish'}</button>
+    </div>
+  `;
+  document.getElementById('previewBtn').addEventListener('click', ()=> window.open('?guest='+encodeURIComponent(ev.slug), '_blank'));
+  document.getElementById('deleteBtn').addEventListener('click', async ()=>{
+    if(!confirm('Delete "'+ev.name+'" and all its responses? This cannot be undone.')) return;
+    await apiSend(API+'/'+encodeURIComponent(ev.slug), 'DELETE');
+    goHome();
+  });
+  document.getElementById('saveDraftBtn').addEventListener('click', ()=> persistEvent(ev.status));
+  document.getElementById('publishBtn').addEventListener('click', ()=> persistEvent('published'));
+  document.querySelectorAll('.apptab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.apptab-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      renderTab(btn.dataset.tab);
+    });
+  });
+  renderTab('details');
+}
+
+async function persistEvent(status){
+  const statusEl = document.getElementById('saveStatus');
+  statusEl.textContent = 'Saving…';
+  try{
+    const body = {
+      name: ev.name, event_date: ev.event_date, event_time: ev.event_time,
+      venue_name: ev.venue_name, venue_address: ev.venue_address,
+      theme_json: JSON.stringify(themeObj), questions_json: JSON.stringify(form),
+      status, google_sheet_id: ev.google_sheet_id,
+    };
+    const { event } = await apiSend(API+'/'+encodeURIComponent(ev.slug), 'PUT', body);
+    ev = event;
+    dirty = false;
+    statusEl.textContent = 'Saved just now' + (status==='published' ? ' — published' : ' as draft');
+    document.querySelector('.status-pill').className = 'status-pill '+ev.status;
+    document.querySelector('.status-pill').textContent = ev.status;
+    document.getElementById('publishBtn').textContent = ev.status==='published' ? 'Update Published Event' : 'Publish';
+  }catch(e){
+    statusEl.textContent = 'Save failed — check your connection.';
+  }
+}
+
+function renderTab(t){
+  const c = document.getElementById('tabContent');
+  if(t==='details') return renderDetailsTab(c);
+  if(t==='theme') return renderThemeTab(c);
+  if(t==='questions') return renderQuestionsTab(c);
+  if(t==='dashboard') return renderDashboardTab(c);
+  if(t==='share') return renderShareTab(c);
+}
+
+/* ---- Details tab: the "builder friendly" name/date/venue editor ---- */
+function renderDetailsTab(c){
+  c.innerHTML = `
+    <div class="panel">
+      <h4>Event Details</h4>
+      <div class="field-grid">
+        <div class="field"><label>Event Name</label><input type="text" id="f_name" value="${escapeHtml(ev.name)}"></div>
+        <div class="field"><label>Date</label><input type="date" id="f_date" value="${escapeHtml(ev.event_date)}"></div>
+        <div class="field"><label>Time</label><input type="time" id="f_time" value="${escapeHtml(ev.event_time)}"></div>
+        <div class="field"><label>Venue Name</label><input type="text" id="f_venue" value="${escapeHtml(ev.venue_name)}"></div>
+      </div>
+      <div class="field"><label>Venue Address</label><input type="text" id="f_address" value="${escapeHtml(ev.venue_address)}"></div>
+    </div>
+  `;
+  ['f_name','f_date','f_time','f_venue','f_address'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', e=>{
+      const map = {f_name:'name', f_date:'event_date', f_time:'event_time', f_venue:'venue_name', f_address:'venue_address'};
+      ev[map[id]] = e.target.value;
+      if(id==='f_name') document.getElementById('titlePreview').textContent = e.target.value;
+      dirty = true;
+    });
+  });
+}
+
+/* ---- Theme tab ---- */
+function renderThemeTab(c){
+  c.innerHTML = `<div class="panel"><h4>Theme</h4><div class="theme-row" id="themeRow"></div></div>`;
+  paintThemeRow();
+}
+function paintThemeRow(){
+  const row = document.getElementById('themeRow');
+  const activePreset = themeObj.presetId || 'forest';
+  row.innerHTML = THEMES.map(t=>{
+    const style = t.colors ? themeSwatchStyle(t.colors) : 'background:conic-gradient(from 0deg,#eee,#ccc,#eee);';
+    return `<div class="theme-item"><div class="theme-swatch ${activePreset===t.id?'active':''}" data-tid="${t.id}" style="${style}" title="${t.name}"></div><div class="theme-swatch-label">${t.name}</div></div>`;
+  }).join('') + (activePreset==='custom' ? renderCustomPanel() : '');
+  row.querySelectorAll('.theme-swatch').forEach(sw=>{
+    sw.addEventListener('click', ()=>{
+      const tid = sw.dataset.tid;
+      if(tid==='custom'){ if(!themeObj.custom) themeObj.custom = {...THEMES[0].colors}; themeObj.presetId='custom'; }
+      else themeObj.presetId = tid;
+      applyTheme(resolveTheme(themeObj));
+      dirty = true;
+      paintThemeRow();
+    });
+  });
+}
+function renderCustomPanel(){
+  const c = themeObj.custom;
+  const fields = [{key:'forestDeep',label:'Primary'},{key:'gold',label:'Accent'},{key:'paper',label:'Background'},{key:'rose',label:'Secondary'}];
+  return `<div class="custom-panel">${fields.map(f=>`<label>${f.label}<input type="color" data-ckey="${f.key}" value="${c[f.key]}"></label>`).join('')}</div>`;
+}
+document.addEventListener('input', e=>{
+  if(e.target.matches('.custom-panel input[type=color]')){
+    themeObj.custom[e.target.dataset.ckey] = e.target.value;
+    applyTheme(resolveTheme(themeObj));
+    dirty = true;
+  }
+});
+
+/* ---- Questionnaire tab (builder) ---- */
+function conditionValueOptions(targetQ){
+  if(!targetQ) return [];
+  if(targetQ.type==='yes_no') return ['Yes','No'];
+  if(targetQ.type==='yes_no_maybe') return ['Yes','No','Maybe'];
+  if(['multiple_choice','dropdown'].includes(targetQ.type)) return targetQ.options;
+  return ['Yes','No'];
+}
+function renderQuestionsTab(c){
+  c.innerHTML = `
+    <div class="templates">
+      <span>Load template</span>
+      <button class="tpl-btn" data-tpl="wedding">Wedding RSVP</button>
+      <button class="tpl-btn" data-tpl="birthday">Birthday Party</button>
+      <button class="tpl-btn" data-tpl="corporate">Corporate Event</button>
+      <button class="tpl-btn" data-tpl="conference">Conference</button>
+      <button class="tpl-btn" id="clearBtn" style="border-color:var(--rose);color:var(--rose);">Clear all</button>
+    </div>
+    <div class="builder-grid">
+      <div class="panel"><h4>Question Types</h4><div class="type-list" id="typeList"></div></div>
+      <div class="panel"><h4>Form Canvas</h4><div class="canvas" id="canvas"></div></div>
+    </div>
+  `;
+  document.querySelectorAll('.tpl-btn[data-tpl]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ form = buildFromTemplate(btn.dataset.tpl); dirty=true; renderCanvas(); });
+  });
+  document.getElementById('clearBtn').addEventListener('click', ()=>{ form = []; dirty=true; renderCanvas(); });
+  renderTypePalette();
+  renderCanvas();
+}
+function renderTypePalette(){
+  const list = document.getElementById('typeList');
+  list.innerHTML = QUESTION_TYPES.map(t=>`<div class="type-item" draggable="true" data-type="${t.id}"><span>${t.ic}</span>${t.label}</div>`).join('');
+  list.querySelectorAll('.type-item').forEach(el=>{
+    el.addEventListener('dragstart', e=> e.dataTransfer.setData('text/new-type', el.dataset.type));
+    el.addEventListener('click', ()=>{ form.push(newQuestion(el.dataset.type)); dirty=true; renderCanvas(); });
+  });
+}
+let dragSrcIndex = null;
+function renderCanvas(){
+  const canvas = document.getElementById('canvas');
+  if(!canvas) return;
+  canvas.ondragover = e=> e.preventDefault();
+  canvas.ondrop = e=>{ e.preventDefault(); const nt=e.dataTransfer.getData('text/new-type'); if(nt){ form.push(newQuestion(nt)); dirty=true; renderCanvas(); } };
+  if(form.length===0){ canvas.innerHTML = `<div class="empty-canvas">Drag a question type here, or click one on the left, to start building your form.</div>`; return; }
+  canvas.innerHTML = '';
+  form.forEach((q, idx)=>{
+    const meta = typeMeta(q.type);
+    const card = document.createElement('div'); card.className='qcard'; card.draggable=true; card.dataset.idx=idx;
+    if(q.type==='section_divider'){
+      card.innerHTML = `<div class="divider-card">— ${escapeHtml(q.title)} —</div><div class="qfoot" style="border:none;justify-content:flex-end;"><div class="actions"><button class="icon-btn" data-act="dup">⧉</button><button class="icon-btn" data-act="del">✕</button></div></div>`;
+      wireCardActions(card, idx); canvas.appendChild(card); return;
+    }
+    let optionsHtml = '';
+    if(meta.hasOptions===true){
+      optionsHtml = `<div class="qbody"><div class="opt-list">${q.options.map((o,oi)=>`<div class="opt-row"><input type="text" value="${escapeHtml(o)}" data-optidx="${oi}"><button class="icon-btn" data-act="delopt" data-optidx="${oi}">✕</button></div>`).join('')}</div><button class="add-opt" data-act="addopt">+ Add option</button></div>`;
+    } else if(meta.hasOptions==='grid'){
+      optionsHtml = `<div class="qbody" style="font-size:11px;color:var(--muted);">Rows: ${q.gridRows.join(', ')} | Columns: ${q.gridCols.join(', ')}</div>`;
+    } else if(['rating','linear_scale'].includes(q.type)){
+      optionsHtml = `<div class="qbody" style="font-size:11px;color:var(--muted);">Scale: 1 – ${q.scaleMax}</div>`;
+    }
+    const conditionCandidates = form.filter(o=>o.id!==q.id && ['yes_no','yes_no_maybe','multiple_choice','dropdown'].includes(o.type));
+    const conditionOptions = conditionCandidates.map(o=>`<option value="${o.id}" ${q.condition && q.condition.qid===o.id?'selected':''}>${escapeHtml(o.title)}</option>`).join('');
+    const targetQ = q.condition ? form.find(o=>o.id===q.condition.qid) : null;
+    const equalsOptions = targetQ ? conditionValueOptions(targetQ).map(v=>`<option value="${escapeHtml(v)}" ${q.condition.equals===v?'selected':''}>${escapeHtml(v)}</option>`).join('') : '';
+    card.innerHTML = `
+      <div class="qcard-head"><span class="badge">${meta.ic} ${meta.label}</span><div class="actions"><button class="icon-btn" data-act="dup">⧉</button><button class="icon-btn" data-act="del">✕</button></div></div>
+      <input class="qtitle-input" data-field="title" value="${escapeHtml(q.title)}">
+      <input class="qhelp-input" data-field="help" placeholder="Help text / instructions..." value="${escapeHtml(q.help||'')}">
+      ${optionsHtml}
+      <div class="qfoot">
+        <label class="req-toggle"><input type="checkbox" data-field="required" ${q.required?'checked':''}> Required</label>
+        <div class="cond-row"><select class="cond-select" data-field="condition"><option value="">Always show</option>${conditionOptions}</select>${targetQ?`<select class="cond-select" data-field="conditionEquals">${equalsOptions}</select>`:''}</div>
+      </div>`;
+    wireCardActions(card, idx);
+    canvas.appendChild(card);
+    card.addEventListener('dragstart', ()=>{ dragSrcIndex=idx; card.classList.add('dragging'); });
+    card.addEventListener('dragend', ()=> card.classList.remove('dragging'));
+    card.addEventListener('dragover', e=> e.preventDefault());
+    card.addEventListener('drop', e=>{
+      e.stopPropagation(); e.preventDefault();
+      const nt = e.dataTransfer.getData('text/new-type');
+      if(nt){ form.splice(idx,0,newQuestion(nt)); }
+      else if(dragSrcIndex!==null && dragSrcIndex!==idx){ const [m]=form.splice(dragSrcIndex,1); form.splice(idx,0,m); }
+      dragSrcIndex=null; dirty=true; renderCanvas();
+    });
+  });
+}
+function wireCardActions(card, idx){
+  card.querySelectorAll('[data-act="dup"]').forEach(b=>b.addEventListener('click',()=>{ const cl=JSON.parse(JSON.stringify(form[idx])); cl.id='q_'+Date.now()+'_'+Math.floor(Math.random()*999); form.splice(idx+1,0,cl); dirty=true; renderCanvas(); }));
+  card.querySelectorAll('[data-act="del"]').forEach(b=>b.addEventListener('click',()=>{ form.splice(idx,1); dirty=true; renderCanvas(); }));
+  card.querySelectorAll('[data-act="addopt"]').forEach(b=>b.addEventListener('click',()=>{ form[idx].options.push('Option '+(form[idx].options.length+1)); dirty=true; renderCanvas(); }));
+  card.querySelectorAll('[data-act="delopt"]').forEach(b=>b.addEventListener('click',e=>{ const oi=+e.currentTarget.dataset.optidx; form[idx].options.splice(oi,1); dirty=true; renderCanvas(); }));
+  card.querySelectorAll('[data-field="title"], [data-field="help"]').forEach(inp=> inp.addEventListener('input', e=>{ form[idx][e.target.dataset.field]=e.target.value; dirty=true; }));
+  card.querySelectorAll('[data-field="required"]').forEach(inp=> inp.addEventListener('change', e=>{ form[idx].required=e.target.checked; dirty=true; }));
+  card.querySelectorAll('[data-field="condition"]').forEach(sel=> sel.addEventListener('change', e=>{
+    if(e.target.value){ const t=form.find(o=>o.id===e.target.value); form[idx].condition={qid:e.target.value, equals:conditionValueOptions(t)[0]||'Yes'}; } else { form[idx].condition=null; }
+    dirty=true; renderCanvas();
+  }));
+  card.querySelectorAll('[data-field="conditionEquals"]').forEach(sel=> sel.addEventListener('change', e=>{ form[idx].condition.equals=e.target.value; dirty=true; }));
+  card.querySelectorAll('input[data-optidx]').forEach(inp=> inp.addEventListener('input', e=>{ const oi=+e.target.dataset.optidx; form[idx].options[oi]=e.target.value; dirty=true; }));
+}
+
+/* ---- shared field renderer, used by both editor preview and guest view ---- */
+function questionVisible(q, answers){ if(!q.condition) return true; return answers[q.condition.qid]===q.condition.equals; }
+function renderField(q, container, answers, onChange){
+  switch(q.type){
+    case 'title_block': container.innerHTML = `<div class="pv-title">${escapeHtml(q.title)}</div><div class="pv-help">${escapeHtml(q.help)}</div>`; return;
+    case 'section_divider': container.innerHTML = `<div class="pv-divider">${escapeHtml(q.title)}</div>`; return;
+  }
+  const label = document.createElement('label');
+  label.innerHTML = `${escapeHtml(q.title)} ${q.required?'<span class="req-star">*</span>':''}`;
+  container.appendChild(label);
+  if(q.help) container.insertAdjacentHTML('beforeend', `<div class="pv-help" style="margin-top:-4px;">${escapeHtml(q.help)}</div>`);
+  let field;
+  switch(q.type){
+    case 'short_answer': field=tag('input',{type:'text',placeholder:'Your answer'}); break;
+    case 'long_answer': field=tag('textarea',{rows:3,placeholder:'Your answer'}); break;
+    case 'number': field=tag('input',{type:'number',placeholder:'0'}); break;
+    case 'email': field=tag('input',{type:'email',placeholder:'name@example.com'}); break;
+    case 'phone': field=tag('input',{type:'text',placeholder:'+63 900 000 0000'}); break;
+    case 'date': field=tag('input',{type:'date'}); break;
+    case 'time': field=tag('input',{type:'time'}); break;
+    case 'address':
+      field=document.createElement('div');
+      field.innerHTML = `<input type="text" placeholder="Street address" style="margin-bottom:6px;"><div style="display:flex;gap:6px;"><input type="text" placeholder="City"><input type="text" placeholder="ZIP"></div>`;
+      break;
+    case 'file_upload': field=tag('input',{type:'file'}); break;
+    case 'dropdown':
+      field=document.createElement('select');
+      field.innerHTML = `<option value="">Select...</option>` + q.options.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+      break;
+    case 'multiple_choice': { const row=document.createElement('div'); row.className='pv-pillrow';
+      q.options.forEach(o=>{ const p=tag('div',{class:'pv-pill'}); p.textContent=o; p.onclick=()=>{ answers[q.id]=o; onChange(); }; if(answers[q.id]===o) p.classList.add('sel'); row.appendChild(p); });
+      field=row; break; }
+    case 'yes_no': { const row=document.createElement('div'); row.className='pv-pillrow';
+      ['Yes','No'].forEach(o=>{ const p=tag('div',{class:'pv-pill'}); p.textContent=o; p.onclick=()=>{ answers[q.id]=o; onChange(); }; if(answers[q.id]===o) p.classList.add('sel'); row.appendChild(p); });
+      field=row; break; }
+    case 'yes_no_maybe': { const row=document.createElement('div'); row.className='pv-pillrow';
+      ['Yes','No','Maybe'].forEach(o=>{ const p=tag('div',{class:'pv-pill'}); p.textContent=o; p.onclick=()=>{ answers[q.id]=o; onChange(); }; if(answers[q.id]===o) p.classList.add('sel'); row.appendChild(p); });
+      field=row; break; }
+    case 'checkboxes': { const col=document.createElement('div'); col.className='pv-checkrow';
+      q.options.forEach(o=>{ const wrap=document.createElement('label'); const cur=answers[q.id]||[];
+        wrap.innerHTML = `<input type="checkbox" ${cur.includes(o)?'checked':''}> ${escapeHtml(o)}`;
+        wrap.querySelector('input').addEventListener('change', e=>{ let arr=answers[q.id]||[]; if(e.target.checked) arr.push(o); else arr=arr.filter(x=>x!==o); answers[q.id]=arr; });
+        col.appendChild(wrap); });
+      field=col; break; }
+    case 'rating': case 'linear_scale': { const row=document.createElement('div'); row.className='pv-scale';
+      for(let i=1;i<=q.scaleMax;i++){ const n=tag('div',{class:'snum'}); n.textContent=i; n.onclick=()=>{ answers[q.id]=i; onChange(); }; if(answers[q.id]===i) n.classList.add('sel'); row.appendChild(n); }
+      field=row; break; }
+    case 'star_rating': { const row=document.createElement('div'); row.className='pv-stars';
+      row.innerHTML = [1,2,3,4,5].map(i=>`<span data-i="${i}" class="${(answers[q.id]||0)>=i?'on':''}">★</span>`).join('');
+      row.querySelectorAll('span').forEach(s=>s.addEventListener('click',()=>{ answers[q.id]=+s.dataset.i; onChange(); }));
+      field=row; break; }
+    case 'emoji_rating': { const emojis=['😡','😕','😐','🙂','😍']; const row=document.createElement('div'); row.className='pv-emoji';
+      row.innerHTML = emojis.map((e,i)=>`<span data-i="${i+1}" class="${answers[q.id]===i+1?'sel':''}">${e}</span>`).join('');
+      row.querySelectorAll('span').forEach(s=>s.addEventListener('click',()=>{ answers[q.id]=+s.dataset.i; onChange(); }));
+      field=row; break; }
+    case 'mc_grid': case 'checkbox_grid': { const wrap=document.createElement('div'); wrap.className='pv-grid';
+      const inputType = q.type==='mc_grid'?'radio':'checkbox';
+      wrap.innerHTML = `<table><thead><tr><th></th>${q.gridCols.map(c2=>`<th>${escapeHtml(c2)}</th>`).join('')}</tr></thead><tbody>${q.gridRows.map(r=>`<tr><td>${escapeHtml(r)}</td>${q.gridCols.map(c2=>`<td><input type="${inputType}" name="${q.id}_${r}"></td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      field=wrap; break; }
+    default: field=tag('input',{type:'text'});
+  }
+  if(field && field.tagName!=='DIV'){ field.addEventListener('input', ()=>{ answers[q.id]=field.value; }); }
+  container.appendChild(field);
+}
+
+/* ---- Dashboard tab (host, inside editor) ---- */
+function findAttendanceQuestion(qs){ return qs.find(q=>q.type==='yes_no_maybe' || q.type==='yes_no'); }
+function findNameQuestion(qs){ return qs.find(q=> q.type==='short_answer' && /name/i.test(q.title)) || qs.find(q=>q.type==='short_answer'); }
+function findPartySizeQuestion(qs){ return qs.find(q=> q.type==='number'); }
+function responseStatus(r, qs){
+  const aq = findAttendanceQuestion(qs); if(!aq) return 'attending';
+  const val = r.answers[aq.id];
+  if(val==='Yes') return 'attending'; if(val==='No') return 'declined'; if(val==='Maybe') return 'maybe';
+  return 'declined';
+}
+function responseName(r, qs){ const nq=findNameQuestion(qs); return (nq && r.answers[nq.id]) ? r.answers[nq.id] : 'Guest'; }
+function responsePartySize(r, qs, status){
+  if(status!=='attending') return 0;
+  const pq=findPartySizeQuestion(qs); if(pq && r.answers[pq.id]) return Math.max(1, parseInt(r.answers[pq.id],10)||1);
+  return 1;
+}
+
+let dashResponses = [];
+async function renderDashboardTab(c){
+  c.innerHTML = `<div class="loading-note">Loading responses…</div>`;
+  try{ const data = await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses'); dashResponses = data.responses; }
+  catch(e){ dashResponses = []; }
+  paintDashboard(c, dashResponses, form, true);
+}
+function computeDashStats(responses, qs){
+  let confirmed=0, declined=0, maybe=0, total=0;
+  responses.forEach(r=>{ const s=responseStatus(r,qs); if(s==='attending'){ confirmed++; total+=responsePartySize(r,qs,s); } else if(s==='declined') declined++; else if(s==='maybe') maybe++; });
+  return { total: responses.length, confirmed, declined, maybe, totalAttendees: total };
+}
+function paintDashboard(c, responses, qs, editable){
+  const stats = computeDashStats(responses, qs);
+  c.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card hero2"><div class="k">Total Expected Attendees</div><div class="v">${stats.totalAttendees}</div><div class="sub">${stats.confirmed} confirmed responses</div></div>
+      <div class="stat-card"><div class="k">Total Responses</div><div class="v">${stats.total}</div></div>
+      <div class="stat-card"><div class="k">Attending</div><div class="v">${stats.confirmed}</div></div>
+      <div class="stat-card"><div class="k">Declined</div><div class="v">${stats.declined}</div></div>
+      <div class="stat-card"><div class="k">Maybe</div><div class="v">${stats.maybe}</div></div>
+    </div>
+    <div class="panel">
+      <h4>Responses</h4>
+      <div class="toolbar"><input type="text" id="searchInput" placeholder="Search guest..."><select id="statusFilter"><option value="">All statuses</option><option value="attending">Attending</option><option value="declined">Declined</option><option value="maybe">Maybe</option></select>${editable?'<button class="btn secondary" id="exportBtn">Export CSV</button><button class="btn secondary" id="refreshBtn">Refresh</button>':''}</div>
+      <div class="table-wrap"><table class="gtable"><thead><tr><th>Guest</th><th>Status</th><th>Party</th><th>Submitted</th></tr></thead><tbody id="guestTableBody"></tbody></table></div>
+      <div class="empty-note hide" id="emptyNote">No responses match your filters.</div>
+    </div>
+  `;
+  function paintTable(){
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const filter = document.getElementById('statusFilter').value;
+    const rows = responses.map(r=>({r, name:responseName(r,qs), status:responseStatus(r,qs)}))
+      .filter(x=> x.name.toLowerCase().includes(search) && (!filter || x.status===filter));
+    const body = document.getElementById('guestTableBody');
+    const empty = document.getElementById('emptyNote');
+    if(rows.length===0){ body.innerHTML=''; empty.classList.remove('hide'); return; }
+    empty.classList.add('hide');
+    body.innerHTML = rows.map(({r,name,status})=>`
+      <tr><td><b>${escapeHtml(name)}</b></td><td><span class="status-badge status-${status}">${status}</span></td>
+      <td>${status==='attending' ? responsePartySize(r,qs,status)+' pax' : '—'}</td>
+      <td style="font-size:11px;color:var(--muted);">${new Date(r.submitted_at).toLocaleString()}</td></tr>`).join('');
+  }
+  document.getElementById('searchInput').addEventListener('input', paintTable);
+  document.getElementById('statusFilter').addEventListener('change', paintTable);
+  if(editable){
+    document.getElementById('refreshBtn').addEventListener('click', ()=> renderDashboardTab(c));
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      const rowsOut = [['Name','Status','Party', ...qs.filter(q=>!['section_divider','title_block'].includes(q.type)).map(q=>q.title)]];
+      responses.forEach(r=>{
+        const status = responseStatus(r,qs);
+        const vals = qs.filter(q=>!['section_divider','title_block'].includes(q.type)).map(q=>{ const v=r.answers[q.id]; return Array.isArray(v)?v.join('; '):(v||''); });
+        rowsOut.push([responseName(r,qs), status, responsePartySize(r,qs,status), ...vals]);
+      });
+      const csv = rowsOut.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download=(ev?ev.slug:'responses')+'.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+  }
+  paintTable();
+}
+
+/* ---- Share tab: link, QR, dashboard access, Google Sheet ---- */
+function renderShareTab(c){
+  const guestLink = location.origin + location.pathname + '?guest=' + encodeURIComponent(ev.slug);
+  const dashLink = location.origin + location.pathname + '?dash=' + encodeURIComponent(ev.slug);
+  c.innerHTML = `
+    <div class="panel">
+      <h4>Guest Invitation Link</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;">${ev.status==='published' ? 'Live — anyone with this link can view the invitation and RSVP.' : 'This event is still a draft. Publish it first so the link actually shows the invitation.'}</p>
+      <div class="link-row"><input type="text" readonly value="${escapeHtml(guestLink)}" id="guestLinkInput"><button class="btn" id="copyGuestBtn">Copy</button></div>
+      <img class="qr-box" width="150" height="150" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=6&data=${encodeURIComponent(guestLink)}" alt="QR code">
+    </div>
+    <div class="panel">
+      <h4>Dashboard Access</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;">Add someone's email so they can open the dashboard link below and see how many people have responded — read-only, they can't edit the event. This checks their typed email against the list, it isn't a password — don't use it for sensitive data.</p>
+      <div class="link-row"><input type="text" readonly value="${escapeHtml(dashLink)}" id="dashLinkInput"><button class="btn" id="copyDashBtn">Copy</button></div>
+      <div class="link-row"><input type="email" placeholder="name@example.com" id="newAccessEmail"><button class="btn secondary" id="addAccessBtn">Add</button></div>
+      <div class="access-list" id="accessList"></div>
+    </div>
+    <div class="panel">
+      <h4>Google Sheets Sync</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;">Paste a Google Sheet ID to mirror every new response into it as a row. Requires a Google service account connected on the server — see the README.</p>
+      <div class="field"><label>Google Sheet ID</label><input type="text" id="sheetIdInput" value="${escapeHtml(ev.google_sheet_id||'')}" placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"></div>
+      <button class="btn secondary" id="saveSheetBtn">Save Sheet ID</button>
+    </div>
+  `;
+  document.getElementById('copyGuestBtn').addEventListener('click', ()=> copyToClipboard('guestLinkInput', 'copyGuestBtn'));
+  document.getElementById('copyDashBtn').addEventListener('click', ()=> copyToClipboard('dashLinkInput', 'copyDashBtn'));
+  document.getElementById('saveSheetBtn').addEventListener('click', async ()=>{
+    ev.google_sheet_id = document.getElementById('sheetIdInput').value.trim();
+    await persistEvent(ev.status);
+  });
+  document.getElementById('addAccessBtn').addEventListener('click', async ()=>{
+    const email = document.getElementById('newAccessEmail').value.trim();
+    if(!email) return;
+    await apiSend(API+'/'+encodeURIComponent(ev.slug)+'/access', 'POST', { email });
+    document.getElementById('newAccessEmail').value = '';
+    paintAccessList();
+  });
+  paintAccessList();
+}
+async function copyToClipboard(inputId, btnId){
+  const input = document.getElementById(inputId); input.select();
+  try{ await navigator.clipboard.writeText(input.value); const btn=document.getElementById(btnId); const orig=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=orig,1500); }catch(e){}
+}
+async function paintAccessList(){
+  const list = document.getElementById('accessList');
+  try{
+    const { emails } = await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/access');
+    list.innerHTML = emails.length ? emails.map(email=>`
+      <div class="access-row"><span>${escapeHtml(email)}</span><button class="icon-btn" data-email="${escapeHtml(email)}">✕</button></div>`).join('')
+      : `<div class="empty-note">No one added yet.</div>`;
+    list.querySelectorAll('button[data-email]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await fetch(API+'/'+encodeURIComponent(ev.slug)+'/access?email='+encodeURIComponent(btn.dataset.email), { method:'DELETE' });
+        paintAccessList();
+      });
+    });
+  }catch(e){ list.innerHTML = `<div class="empty-note">Couldn't load the access list.</div>`; }
+}
+
+/* ============================================================
+   GUEST VIEW — public, read from a published event, submits responses
+   ============================================================ */
+async function renderGuestView(slug){
+  root.innerHTML = `<div class="loading-note">Loading invitation…</div>`;
+  let data;
+  try{ data = await apiGet(API+'/'+encodeURIComponent(slug)); }
+  catch(e){ root.innerHTML = `<div class="unpublished-note"><h3>Invitation not found</h3><p>This link doesn't point to an existing event.</p></div>`; return; }
+  const e2 = data.event;
+  if(e2.status !== 'published'){
+    root.innerHTML = `<div class="unpublished-note"><h3>Not open yet</h3><p>This invitation hasn't been published by the host. Check back soon.</p></div>`;
+    return;
+  }
+  applyTheme(resolveTheme(JSON.parse(e2.theme_json||'{}')));
+  const questions = JSON.parse(e2.questions_json || '[]');
+  const answers = {};
+
+  root.innerHTML = `
+    <div class="invite-wrap">
+      <div class="invite-hero">
+        <div class="eyebrow">You're Invited</div>
+        <h1>${escapeHtml(e2.name)}</h1>
+        ${(e2.event_date || e2.event_time) ? `<div class="invite-date">${escapeHtml(formatEventDate(e2.event_date))}${e2.event_time?' · '+escapeHtml(formatEventTime(e2.event_time)):''}</div>` : ''}
+      </div>
+      <div class="invite-body">
+        ${(e2.venue_name || e2.venue_address) ? `
+        <div class="venue-block">
+          <div class="section-label">Venue</div>
+          ${e2.venue_name?`<p class="venue-name">${escapeHtml(e2.venue_name)}</p>`:''}
+          ${e2.venue_address?`<p>${escapeHtml(e2.venue_address)}</p>`:''}
+        </div>
+        <hr class="divider">` : ''}
+        <div class="section-label">Kindly Respond</div>
+        <div id="guestFormHolder"></div>
+        <div class="thankyou hide" id="thankyouBlock">
+          <div class="seal">✓</div><h3>Thank you for celebrating with us ❤️</h3><p>Your response has been recorded.</p>
+        </div>
+      </div>
+    </div>
+  `;
+  function paintGuestForm(){
+    const holder = document.getElementById('guestFormHolder');
+    holder.innerHTML = '';
+    questions.forEach(q=>{
+      if(!questionVisible(q, answers)) return;
+      const field = document.createElement('div');
+      field.className = (q.type==='section_divider'||q.type==='title_block') ? '' : 'pv-field';
+      renderField(q, field, answers, paintGuestForm);
+      holder.appendChild(field);
+    });
+    const submit = tag('button',{class:'pv-submit'}); submit.textContent='Submit RSVP';
+    submit.onclick = async ()=>{
+      const missing = questions.some(q=> q.required && questionVisible(q,answers) && !answers[q.id]);
+      if(missing){ alert('Please fill in the required fields.'); return; }
+      submit.disabled = true; submit.textContent = 'Submitting…';
+      try{
+        await apiSend(API+'/'+encodeURIComponent(slug)+'/responses', 'POST', { answers });
+        holder.classList.add('hide');
+        document.getElementById('thankyouBlock').classList.remove('hide');
+      }catch(err){
+        submit.disabled = false; submit.textContent = 'Submit RSVP';
+        alert('Something went wrong submitting your RSVP — please try again.');
+      }
+    };
+    holder.appendChild(submit);
+  }
+  paintGuestForm();
+}
+function formatEventDate(d){ if(!d) return ''; try{ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }catch(e){ return d; } }
+function formatEventTime(t){ if(!t) return ''; try{ const [h,m]=t.split(':'); const dt=new Date(); dt.setHours(+h,+m); return dt.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }catch(e){ return t; } }
+
+/* ============================================================
+   DASHBOARD GATE — email-gated read-only dashboard for people
+   the host added under Share > Dashboard Access
+   ============================================================ */
+async function renderDashGate(slug){
+  root.innerHTML = `
+    <div class="gate-wrap">
+      <h3>Event Dashboard</h3>
+      <p style="font-size:13px;color:var(--muted);">Enter the email the host shared this dashboard with.</p>
+      <input type="email" id="gateEmail" placeholder="name@example.com">
+      <button class="btn" id="gateSubmit" style="width:100%;">View Dashboard</button>
+      <div class="gate-error hide" id="gateError">That email doesn't have access to this dashboard.</div>
+    </div>
+  `;
+  document.getElementById('gateSubmit').addEventListener('click', async ()=>{
+    const email = document.getElementById('gateEmail').value.trim().toLowerCase();
+    if(!email) return;
+    try{
+      const [{ event: e2 }, { emails }] = await Promise.all([
+        apiGet(API+'/'+encodeURIComponent(slug)),
+        apiGet(API+'/'+encodeURIComponent(slug)+'/access'),
+      ]);
+      const allowed = emails.includes(email) || (e2.owner_email && e2.owner_email.toLowerCase()===email);
+      if(!allowed){ document.getElementById('gateError').classList.remove('hide'); return; }
+      const { responses } = await apiGet(API+'/'+encodeURIComponent(slug)+'/responses');
+      const qs = JSON.parse(e2.questions_json||'[]');
+      applyTheme(resolveTheme(JSON.parse(e2.theme_json||'{}')));
+      root.innerHTML = `
+        <div class="topbar"><div class="brand">Elegante<em>RSVP</em></div></div>
+        <h1 style="font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--forest-deep);margin:0 0 4px;">${escapeHtml(e2.name)} — Dashboard</h1>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Viewing as ${escapeHtml(email)} · read-only</p>
+        <div id="dashHolder"></div>
+      `;
+      paintDashboard(document.getElementById('dashHolder'), responses, qs, false);
+    }catch(err){
+      document.getElementById('gateError').textContent = 'Something went wrong loading this dashboard.';
+      document.getElementById('gateError').classList.remove('hide');
+    }
+  });
+}
+</script>
+</body>
+</html>
