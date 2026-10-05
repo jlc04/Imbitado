@@ -1,3 +1,6 @@
+// EleganteRSVP / Imbitado backend: ONE file that handles every /api/events... route.
+// Needs a D1 database bound to this Pages project with the variable name DB.
+
 const HEADERS = { 'Content-Type': 'application/json' };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: HEADERS });
 const newId = (p) => p + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -17,6 +20,7 @@ export async function onRequest({ request, env, params }) {
     const slug = segs[1] || null;
     const sub = segs[2] || null;
 
+    // ---------- /api/events ----------
     if (!slug) {
       if (method === 'GET') {
         const { results } = await DB.prepare(
@@ -34,7 +38,7 @@ export async function onRequest({ request, env, params }) {
         const taken = await DB.prepare('SELECT id FROM events WHERE slug = ?').bind(s).first();
         if (taken) s = s + '-' + Math.random().toString(36).slice(2, 6);
         const now = nowIso();
-        const theme = JSON.stringify({ presetId: 'forest', custom: null });
+        const theme = JSON.stringify({ presetId: 'luxury', customColors: null });
         const questions = JSON.stringify([
           { id: 'q_name', type: 'short_answer', title: 'Full Name', required: true, help: '', options: [], condition: null },
           { id: 'q_attend', type: 'yes_no_maybe', title: 'Will you attend?', required: true, help: '', options: [], condition: null },
@@ -55,19 +59,28 @@ export async function onRequest({ request, env, params }) {
     const event = await DB.prepare('SELECT * FROM events WHERE slug = ?').bind(slug).first();
     if (!event) return json({ error: 'not found' }, 404);
 
+    // ---------- /api/events/:slug ----------
     if (!sub) {
       if (method === 'GET') return json({ event });
       if (method === 'PUT') {
         const b = await request.json().catch(() => ({}));
         await DB.prepare(
           `UPDATE events SET name=?, event_date=?, event_time=?, venue_name=?, venue_address=?,
-             theme_json=?, questions_json=?, status=?, google_sheet_id=?, updated_at=? WHERE slug = ?`
+             theme_json=?, questions_json=?, status=?,
+             registry_url=?, cash_gift_enabled=?, cash_gift_title=?, cash_gift_note=?, payment_methods_json=?,
+             sheet_webhook_url=?, updated_at=?
+           WHERE slug = ?`
         )
           .bind(
             b.name ?? event.name, b.event_date ?? event.event_date, b.event_time ?? event.event_time,
             b.venue_name ?? event.venue_name, b.venue_address ?? event.venue_address,
             b.theme_json ?? event.theme_json, b.questions_json ?? event.questions_json,
-            b.status ?? event.status, b.google_sheet_id ?? event.google_sheet_id, nowIso(), slug
+            b.status ?? event.status,
+            b.registry_url ?? event.registry_url, b.cash_gift_enabled ?? event.cash_gift_enabled,
+            b.cash_gift_title ?? event.cash_gift_title, b.cash_gift_note ?? event.cash_gift_note,
+            b.payment_methods_json ?? event.payment_methods_json,
+            b.sheet_webhook_url ?? event.sheet_webhook_url,
+            nowIso(), slug
           )
           .run();
         const updated = await DB.prepare('SELECT * FROM events WHERE slug = ?').bind(slug).first();
@@ -82,6 +95,7 @@ export async function onRequest({ request, env, params }) {
       return json({ error: 'method not allowed' }, 405);
     }
 
+    // ---------- /api/events/:slug/responses ----------
     if (sub === 'responses') {
       if (method === 'GET') {
         const { results } = await DB.prepare(
@@ -97,15 +111,20 @@ export async function onRequest({ request, env, params }) {
         await DB.prepare('INSERT INTO responses (id, event_id, answers_json, submitted_at) VALUES (?, ?, ?, ?)')
           .bind(id, event.id, JSON.stringify(answers), submittedAt).run();
 
-        if (event.google_sheet_id && env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+        // Best-effort spreadsheet mirror — never blocks or fails the RSVP if it errors.
+        if (event.sheet_webhook_url) {
           try {
             const qs = JSON.parse(event.questions_json || '[]');
-            const row = qs
+            const row = [submittedAt, ...qs
               .filter((q) => !['section_divider', 'title_block'].includes(q.type))
-              .map((q) => { const v = answers[q.id]; return Array.isArray(v) ? v.join(', ') : v || ''; });
-            await appendRowToSheet(env, event.google_sheet_id, [submittedAt, ...row]);
+              .map((q) => { const v = answers[q.id]; return Array.isArray(v) ? v.join(', ') : (v || ''); })];
+            await fetch(event.sheet_webhook_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ row }),
+            });
           } catch (err) {
-            console.error('Google Sheets sync failed:', err.message);
+            console.error('Spreadsheet webhook failed:', err.message);
           }
         }
         return json({ ok: true, id }, 201);
@@ -113,6 +132,7 @@ export async function onRequest({ request, env, params }) {
       return json({ error: 'method not allowed' }, 405);
     }
 
+    // ---------- /api/events/:slug/access ----------
     if (sub === 'access') {
       if (method === 'GET') {
         const { results } = await DB.prepare('SELECT email FROM dashboard_access WHERE event_id = ? ORDER BY added_at').bind(event.id).all();
@@ -141,43 +161,4 @@ export async function onRequest({ request, env, params }) {
   } catch (err) {
     return json({ error: String((err && err.message) || err) }, 500);
   }
-}
-
-function b64url(input) {
-  const str = typeof input === 'string' ? btoa(input) : btoa(String.fromCharCode(...new Uint8Array(input)));
-  return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function pemToBuf(pem) {
-  const bin = atob(pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, ''));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
-}
-async function googleToken(env) {
-  const creds = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  const now = Math.floor(Date.now() / 1000);
-  const head = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claims = b64url(JSON.stringify({
-    iss: creds.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets',
-    aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
-  }));
-  const key = await crypto.subtle.importKey('pkcs8', pemToBuf(creds.private_key),
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(head + '.' + claims));
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + head + '.' + claims + '.' + b64url(sig),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error('Google auth failed: ' + JSON.stringify(data));
-  return data.access_token;
-}
-async function appendRowToSheet(env, sheetId, row) {
-  const token = await googleToken(env);
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) }
-  );
-  if (!res.ok) throw new Error('Sheets append failed: ' + (await res.text()));
 }
