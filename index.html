@@ -290,6 +290,27 @@
   .row-line{display:flex;align-items:center;gap:6px;}
   .row-label{width:60px;font-size:11px;color:var(--muted);text-align:right;margin-right:6px;cursor:pointer;}
   .row-aisle{width:26px;}
+  /* --- seat picking & blocking --- */
+  .seat.blocked{background:repeating-linear-gradient(45deg,var(--paper-deep),var(--paper-deep) 4px,var(--line) 4px,var(--line) 8px);cursor:pointer;font-size:12px;}
+  .seat.blocked.filled{background:var(--forest-deep);color:var(--paper);box-shadow:0 0 0 2px var(--gold);}
+  .seat.taken{background:var(--paper-deep);border-style:dashed;color:var(--muted);cursor:not-allowed;}
+  .seat.resv{background:repeating-linear-gradient(45deg,var(--paper-deep),var(--paper-deep) 4px,var(--line) 4px,var(--line) 8px);cursor:not-allowed;font-size:12px;}
+  .seat.mine{background:var(--gold);border-color:var(--gold);color:var(--forest-deep);}
+  .seat.chosen{box-shadow:0 0 0 2px var(--gold);}
+  .tbl-name.static{cursor:default;text-decoration:none;}
+  .mode-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 8px;}
+  .seat-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:8px 0 2px;align-items:center;}
+  .seat-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .seat-legend i{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);background:var(--white);}
+  .seat-legend i.l-taken{background:var(--paper-deep);border-style:dashed;}
+  .seat-legend i.l-resv{background:repeating-linear-gradient(45deg,var(--paper-deep),var(--paper-deep) 3px,var(--line) 3px,var(--line) 6px);}
+  .seat-legend i.l-mine{background:var(--gold);border-color:var(--gold);}
+  .guest-seats{margin-top:4px;}
+  .guest-seats .seat-grid{margin-top:12px;}
+  .guest-seats .rows-scroll{margin-top:12px;}
+  .seat-saved{background:var(--paper-deep);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;margin-top:10px;line-height:1.6;}
+  .pv-field.is-off{opacity:.55;}
+  .pv-field input:disabled{background:var(--paper-deep) !important;cursor:not-allowed;}
 </style>
 </head>
 <body>
@@ -1082,6 +1103,7 @@ function renderField(q, container, answers, onChange){
       field=wrap; break; }
     default: field=tag('input',{type:'text'});
   }
+  if(field && ['INPUT','TEXTAREA','SELECT'].includes(field.tagName) && field.type!=='file' && answers[q.id]!=null && !Array.isArray(answers[q.id])) field.value = answers[q.id];
   if(field && field.tagName!=='DIV'){ field.addEventListener('input', ()=>{ answers[q.id]=field.value; }); }
   container.appendChild(field);
 }
@@ -1141,7 +1163,7 @@ function buildDetailGroups(r, qs){
     const display = Array.isArray(val) ? val.join(', ') : val;
     groups[g].push({label:q.title, value:display});
   });
-  if(dashSeatMap[r.id]) groups.Party.push({label:'Seating', value:[...dashSeatMap[r.id]].join(', ')});
+  if(dashSeatMap[r.id]) groups.Party.push({label:'Seating', value:Object.entries(dashSeatMap[r.id]).map(([lab, seats])=>lab + ' (seat' + (seats.length>1?'s ':' ') + seats.sort((a,b)=>a-b).join(', ') + ')').join(' · ')});
   return order.filter(g=>groups[g].length).map(g=>({name:g, items:groups[g]}));
 }
 let dashResponses = [];
@@ -1150,21 +1172,26 @@ async function renderDashboardTab(c){
   c.innerHTML = `<div class="loading-note">Loading responses…</div>`;
   try{ const data = await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses'); dashResponses = data.responses; }
   catch(e){ dashResponses = []; }
-  paintDashboard(c, dashResponses, form, true, ev.expected_attendees, ev);
+  let seatAssign = {};
+  try{ seatAssign = (await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/seats')).assign || {}; }catch(e){}
+  paintDashboard(c, dashResponses, form, true, ev.expected_attendees, ev, seatAssign);
 }
 function computeDashStats(responses, qs){
   let confirmed=0, declined=0, maybe=0, total=0;
   responses.forEach(r=>{ const s=responseStatus(r,qs); if(s==='attending'){ confirmed++; total+=responsePartySize(r,qs,s); } else if(s==='declined') declined++; else if(s==='maybe') maybe++; });
   return { total: responses.length, confirmed, declined, maybe, totalAttendees: total };
 }
-function paintDashboard(c, responses, qs, editable, expected, evt){
+function paintDashboard(c, responses, qs, editable, expected, evt, seatAssign){
   const pInfo = plusInfo(evt || {plus_one_policy:'unlimited'});
   dashPartyMax = pInfo.unlimited ? null : 1 + pInfo.limit;
   dashSeatMap = {};
   const sj = parseSeating(evt && evt.seating_json);
-  if(sj.enabled) Object.entries(sj.assign).forEach(([sid, key])=>{
-    const rid = String(key).split('#')[0], t = parseInt(sid.split(':')[0],10);
-    (dashSeatMap[rid] = dashSeatMap[rid] || new Set()).add(seatTableLabel(sj, t));
+  if(sj.enabled && seatAssign) Object.entries(seatAssign).forEach(([sid, key])=>{
+    const parts = sid.split(':'), t = parseInt(parts[0],10), k = parseInt(parts[1],10);
+    if(t >= sj.count || k >= sj.perTable) return;
+    const rid = String(key).split('#')[0], label = seatTableLabel(sj, t);
+    const byTable = (dashSeatMap[rid] = dashSeatMap[rid] || {});
+    (byTable[label] = byTable[label] || []).push(k + 1);
   });
   let overCount = 0;
   if(dashPartyMax !== null) responses.forEach(r=>{ if(responseStatus(r,qs)==='attending' && rawPartySize(r,qs) > dashPartyMax) overCount++; });
@@ -1225,7 +1252,6 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
         if(!confirm('Remove ' + nm + "'s RSVP? This can't be undone, and the attendee numbers will update.")) return;
         try{ await apiSend(API+'/'+encodeURIComponent(ev.slug)+'/responses/'+encodeURIComponent(rid), 'DELETE'); }
         catch(err){ alert('Could not remove it — please try again.'); return; }
-        if(seating) Object.keys(seating.assign).forEach(sid=>{ if(String(seating.assign[sid]).split('#')[0]===rid) delete seating.assign[sid]; });
         renderDashboardTab(c);
       });
     });
@@ -1249,19 +1275,58 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
   paintTable();
 }
 
-/* ---- Seating arrangement (editor only; can be switched off) ---- */
+/* ---- Seating arrangement (can be switched off) ---- */
 function parseSeating(raw){
   let o = {}; try{ o = JSON.parse(raw || '{}') || {}; }catch(e){}
   return {
     enabled: !!o.enabled,
+    guestPick: o.guestPick !== false,
     layout: ['round','long','rows'].includes(o.layout) ? o.layout : 'round',
     count: Math.min(60, Math.max(1, parseInt(o.count,10) || 8)),
     perTable: Math.min(30, Math.max(1, parseInt(o.perTable,10) || 8)),
     names: o.names || {},
-    assign: o.assign || {},
+    blocked: Array.isArray(o.blocked) ? o.blocked.filter(x=>typeof x==='string') : [],
   };
 }
 function seatTableLabel(sj, t){ return (sj.names && sj.names[t]) || ((sj.layout==='rows' ? 'Row ' : 'Table ') + (t+1)); }
+// One chart builder for the editor AND the guest page. h = { seat(t,k), name(t), center(t) }
+function seatChartHtml(cfg, h){
+  const L = cfg.layout, n = cfg.perTable;
+  if(L==='round'){
+    const r = Math.max(48, Math.ceil(n * 34 / (2 * Math.PI))), size = 2 * (r + 18), d = 2 * (r - 20);
+    let tables = '';
+    for(let t=0; t<cfg.count; t++){
+      let seats = '';
+      for(let k=0; k<n; k++){
+        const a = (2 * Math.PI * k / n) - Math.PI / 2;
+        const x = Math.round(size/2 + r*Math.cos(a) - 14), y = Math.round(size/2 + r*Math.sin(a) - 14);
+        seats += h.seat(t,k).replace('<button ', `<button style="left:${x}px;top:${y}px" `);
+      }
+      tables += `<div class="tbl">${h.name(t,'tbl')}<div class="round-wrap" style="width:${size}px;height:${size}px;"><div class="round-table" style="width:${d}px;height:${d}px;left:${(size-d)/2}px;top:${(size-d)/2}px;">${h.center(t)}</div>${seats}</div></div>`;
+    }
+    return `<div class="seat-grid" style="--tw:${size + 16}px">${tables}</div>`;
+  }
+  if(L==='long'){
+    const top = Math.ceil(n/2);
+    let tables = '';
+    for(let t=0; t<cfg.count; t++){
+      let a = '', b = '';
+      for(let k=0; k<top; k++) a += h.seat(t,k);
+      for(let k=top; k<n; k++) b += h.seat(t,k);
+      tables += `<div class="tbl">${h.name(t,'tbl')}<div class="long-table"><div class="seat-line">${a}</div><div class="long-top">${h.center(t)}</div><div class="seat-line">${b}</div></div></div>`;
+    }
+    return `<div class="seat-grid" style="--tw:${top * 34 + 24}px">${tables}</div>`;
+  }
+  const left = Math.ceil(n/2);
+  let rowsHtml = '';
+  for(let t=0; t<cfg.count; t++){
+    let a = '', b = '';
+    for(let k=0; k<left; k++) a += h.seat(t,k);
+    for(let k=left; k<n; k++) b += h.seat(t,k);
+    rowsHtml += `<div class="row-line">${h.name(t,'row')}${a}<span class="row-aisle"></span>${b}</div>`;
+  }
+  return `<div class="rows-scroll"><div class="rows-wrap"><div class="rows-stage">Altar / Stage</div>${rowsHtml}</div></div>`;
+}
 function seatingPeople(responses){
   const pi = plusInfo(ev); dashPartyMax = pi.unlimited ? null : 1 + pi.limit;
   const people = [];
@@ -1274,20 +1339,25 @@ function seatingPeople(responses){
 }
 async function renderSeatingTab(c){
   c.innerHTML = `<div class="loading-note">Loading guests…</div>`;
-  let responses = [];
+  const base = API+'/'+encodeURIComponent(ev.slug)+'/seats';
+  let responses = [], assignMap = {}, srcMap = {};
   try{ responses = (await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses')).responses; }catch(e){}
+  try{ const sd = await apiGet(base); assignMap = sd.assign || {}; srcMap = sd.src || {}; }catch(e){}
   const people = seatingPeople(responses);
   const byKey = {}; people.forEach(p=>{ byKey[p.key] = p; });
-  let sel = null, msg = '';
-
-  function cleanAssign(){
-    const seen = new Set();
-    Object.keys(seating.assign).forEach(sid=>{
-      const parts = sid.split(':'), t = +parts[0], k = +parts[1], key = seating.assign[sid];
-      if(!byKey[key] || t >= seating.count || k >= seating.perTable || seen.has(key)) delete seating.assign[sid];
-      else seen.add(key);
-    });
+  let sel = null, msg = '', mode = 'assign';
+  async function seatOp(body){
+    const r = await apiSend(base, 'POST', body);
+    assignMap = r.assign || {}; srcMap = r.src || {};
+    return r;
   }
+  // drop seats that belong to people who are no longer attending (removed RSVP, smaller party)
+  const stale = Object.keys(assignMap).filter(sid=>!byKey[assignMap[sid]]);
+  if(stale.length){ try{ await seatOp({op:'prune', sids:stale}); }catch(e){} }
+
+  const inRange = sid => { const q = sid.split(':'); return +q[0] < seating.count && +q[1] < seating.perTable; };
+  const visible = () => Object.keys(assignMap).filter(inRange);
+
   function paintControls(){
     const L = seating.layout;
     const nounPlural = L==='rows' ? 'rows' : (L==='long' ? 'long tables' : 'round tables');
@@ -1298,6 +1368,8 @@ async function renderSeatingTab(c){
         <div class="toggle-row"><input type="checkbox" id="seatEnabled" ${seating.enabled ? 'checked' : ''}><span style="font-size:13px;">Use a seating arrangement for this event</span></div>
         <div class="hint" style="margin-top:-6px;">Turn this off if you don't need it — tables won't show anywhere.</div>
         <div id="seatControls" class="${seating.enabled ? '' : 'hide'}">
+          <div class="toggle-row" style="margin-top:14px;"><input type="checkbox" id="seatGuestPick" ${seating.guestPick ? 'checked' : ''}><span style="font-size:13px;">Let guests choose their own seats</span></div>
+          <div class="hint" style="margin-top:-6px;">Guests who say Yes get a seat picker at the bottom of the invitation. Seats you block stay off-limits to them.</div>
           <div class="layout-cards">
             <div class="layout-card ${L==='round'?'active':''}" data-layout="round"><span class="lc-ic">⭕</span>Round tables</div>
             <div class="layout-card ${L==='long'?'active':''}" data-layout="long"><span class="lc-ic">▭</span>Long tables</div>
@@ -1315,94 +1387,96 @@ async function renderSeatingTab(c){
       </div>
       <div id="seatChartHolder" class="${seating.enabled ? '' : 'hide'}"></div>`;
     document.getElementById('seatEnabled').addEventListener('change', e=>{ seating.enabled = e.target.checked; dirty = true; paintControls(); });
+    document.getElementById('seatGuestPick').addEventListener('change', e=>{ seating.guestPick = e.target.checked; dirty = true; });
     c.querySelectorAll('.layout-card').forEach(el=>el.addEventListener('click', ()=>{ seating.layout = el.dataset.layout; dirty = true; paintControls(); }));
     document.getElementById('seatCount').addEventListener('input', e=>{ seating.count = Math.min(60, Math.max(1, parseInt(e.target.value,10) || 1)); dirty = true; paintChart(); });
     document.getElementById('seatPer').addEventListener('input', e=>{ seating.perTable = Math.min(30, Math.max(1, parseInt(e.target.value,10) || 1)); dirty = true; paintChart(); });
-    document.getElementById('seatClear').addEventListener('click', ()=>{ seating.assign = {}; sel = null; msg = ''; dirty = true; paintChart(); });
-    document.getElementById('seatAuto').addEventListener('click', ()=>{
-      cleanAssign();
-      const used = new Set(Object.values(seating.assign));
+    document.getElementById('seatClear').addEventListener('click', async ()=>{
+      if(visible().length && !confirm('Clear every seat? This also removes seats that guests chose themselves.')) return;
+      try{ await seatOp({op:'clear'}); sel = null; msg = ''; }catch(e){ alert('Could not clear the seats — please try again.'); }
+      paintChart();
+    });
+    document.getElementById('seatAuto').addEventListener('click', async ()=>{
+      const blockedNow = new Set(seating.blocked);
+      const used = new Set(visible().map(sid=>assignMap[sid]));
       const queue = people.filter(p=>!used.has(p.key));
+      const pairs = [];
       for(let t=0; t<seating.count && queue.length; t++){
         for(let k=0; k<seating.perTable && queue.length; k++){
           const sid = t + ':' + k;
-          if(!seating.assign[sid]) seating.assign[sid] = queue.shift().key;
+          if(!assignMap[sid] && !blockedNow.has(sid)) pairs.push([sid, queue.shift().key]);
         }
       }
-      sel = null; msg = queue.length ? queue.length + ' guest' + (queue.length===1?'':'s') + " didn't fit — add more tables or seats." : '';
-      dirty = true; paintChart();
+      try{ if(pairs.length) await seatOp({op:'bulk', pairs}); }catch(e){ alert('Could not seat everyone — please try again.'); }
+      sel = null;
+      msg = queue.length ? queue.length + ' guest' + (queue.length===1?'':'s') + " didn't fit — add more seats, or unblock some." : (blockedNow.size ? 'Done — blocked seats were left free for your special guests.' : '');
+      paintChart();
     });
     paintChart();
   }
   function paintChart(){
     const holder = document.getElementById('seatChartHolder');
     if(!holder || !seating.enabled) return;
-    cleanAssign();
     const L = seating.layout, total = seating.count * seating.perTable;
-    const seatedKeys = new Set(Object.values(seating.assign));
+    const blockedSet = new Set(seating.blocked.filter(inRange));
+    const seatedKeys = new Set(visible().map(sid=>assignMap[sid]));
     const unseated = people.filter(p=>!seatedKeys.has(p.key));
     const seatBtn = (t, k)=>{
-      const sid = t + ':' + k, key = seating.assign[sid], p = key && byKey[key];
-      return `<button type="button" class="seat${p ? ' filled' : ''}${(!p && sel) ? ' target' : ''}" data-sid="${sid}" title="${escapeHtml(p ? p.label : 'Empty seat')}">${p ? escapeHtml(p.label.charAt(0).toUpperCase()) : ''}</button>`;
+      const sid = t + ':' + k, key = assignMap[sid], p = key && byKey[key], blk = blockedSet.has(sid);
+      const cls = 'seat' + (p ? ' filled' : '') + (blk ? ' blocked' : '') + ((p && srcMap[sid]==='guest') ? ' chosen' : '') + ((!p && sel && mode==='assign') ? ' target' : '');
+      const ttl = p ? p.label + (srcMap[sid]==='guest' ? ' (chose this seat)' : '') : (blk ? 'Blocked — reserved for special guests' : 'Empty seat');
+      return `<button type="button" class="${cls}" data-sid="${sid}" title="${escapeHtml(ttl)}">${p ? escapeHtml(p.label.charAt(0).toUpperCase()) : (blk ? '🔒' : '')}</button>`;
     };
-    const filledIn = t => Object.keys(seating.assign).filter(sid=>sid.startsWith(t + ':')).length;
-    const nameEl = t => `<div class="tbl-name" data-rename="${t}" title="Tap to rename">${escapeHtml(seatTableLabel(seating, t))}</div>`;
-    const n = seating.perTable;
-    let chart = '';
-    if(L==='round'){
-      const r = Math.max(48, Math.ceil(n * 34 / (2 * Math.PI))), size = 2 * (r + 18), d = 2 * (r - 20);
-      let tables = '';
-      for(let t=0; t<seating.count; t++){
-        let seats = '';
-        for(let k=0; k<n; k++){
-          const a = (2 * Math.PI * k / n) - Math.PI / 2;
-          const x = Math.round(size/2 + r*Math.cos(a) - 14), y = Math.round(size/2 + r*Math.sin(a) - 14);
-          seats += seatBtn(t,k).replace('<button ', `<button style="left:${x}px;top:${y}px" `);
-        }
-        tables += `<div class="tbl">${nameEl(t)}<div class="round-wrap" style="width:${size}px;height:${size}px;"><div class="round-table" style="width:${d}px;height:${d}px;left:${(size-d)/2}px;top:${(size-d)/2}px;">${filledIn(t)}/${n}</div>${seats}</div></div>`;
-      }
-      chart = `<div class="seat-grid" style="--tw:${size + 16}px">${tables}</div>`;
-    } else if(L==='long'){
-      const top = Math.ceil(n/2);
-      let tables = '';
-      for(let t=0; t<seating.count; t++){
-        let a = '', b = '';
-        for(let k=0; k<top; k++) a += seatBtn(t,k);
-        for(let k=top; k<n; k++) b += seatBtn(t,k);
-        tables += `<div class="tbl">${nameEl(t)}<div class="long-table"><div class="seat-line">${a}</div><div class="long-top">${filledIn(t)}/${n}</div><div class="seat-line">${b}</div></div></div>`;
-      }
-      chart = `<div class="seat-grid" style="--tw:${top * 34 + 24}px">${tables}</div>`;
-    } else {
-      const left = Math.ceil(n/2);
-      let rowsHtml = '';
-      for(let t=0; t<seating.count; t++){
-        let a = '', b = '';
-        for(let k=0; k<left; k++) a += seatBtn(t,k);
-        for(let k=left; k<n; k++) b += seatBtn(t,k);
-        rowsHtml += `<div class="row-line"><span class="row-label" data-rename="${t}" title="Tap to rename">${escapeHtml(seatTableLabel(seating, t))}</span>${a}<span class="row-aisle"></span>${b}</div>`;
-      }
-      chart = `<div class="rows-scroll"><div class="rows-wrap"><div class="rows-stage">Altar / Stage</div>${rowsHtml}</div></div>`;
-    }
-    const over = people.length - total;
+    const filledIn = t => Object.keys(assignMap).filter(sid=>sid.startsWith(t + ':') && inRange(sid)).length;
+    const chart = seatChartHtml(seating, {
+      seat: seatBtn,
+      name: (t, kind)=> kind==='row'
+        ? `<span class="row-label" data-rename="${t}" title="Tap to ${mode==='block'?'block / unblock the whole row':'rename'}">${escapeHtml(seatTableLabel(seating, t))}</span>`
+        : `<div class="tbl-name" data-rename="${t}" title="Tap to ${mode==='block'?'block / unblock the whole table':'rename'}">${escapeHtml(seatTableLabel(seating, t))}</div>`,
+      center: t => `${filledIn(t)}/${seating.perTable}`,
+    });
+    const over = people.length - (total - blockedSet.size);
+    const hint = msg || (mode==='block'
+      ? 'Tap seats to block or unblock them. Tap a table name to do the whole table. Blocked seats (🔒) are off-limits to guests picking their own seats.'
+      : (sel ? 'Now tap an empty seat to place them.' : 'Tap a guest below, then tap an empty seat. Tap a filled seat to take that guest off it.'));
     holder.innerHTML = `
       <div class="panel">
         <h4>Seat Chart</h4>
-        <div class="seat-summary">Seated <b>${seatedKeys.size}</b> of <b>${people.length}</b> attending people · ${total} seats in total${over > 0 ? ` · <span class="seat-warn">${over} more guest${over===1?'':'s'} than seats</span>` : ''}</div>
-        <div class="hint" id="seatMsg">${escapeHtml(msg || (sel ? 'Now tap an empty seat to place them.' : 'Tap a guest below, then tap an empty seat. Tap a filled seat to take that guest off it.'))}</div>
-        <div class="unseated">${people.length === 0 ? '<span class="hint">No attending guests yet — they appear here as people RSVP Yes.</span>' : (unseated.length === 0 ? '<span class="hint">Everyone is seated ✓</span>' : unseated.map(p=>`<button type="button" class="pchip${sel===p.key?' sel':''}" data-pkey="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>`).join(''))}</div>
+        <div class="mode-row">
+          <button type="button" class="btn ${mode==='assign'?'':'secondary'}" data-mode="assign">Seat guests</button>
+          <button type="button" class="btn ${mode==='block'?'':'secondary'}" data-mode="block">🔒 Block seats for special guests</button>
+        </div>
+        <div class="seat-summary">Seated <b>${seatedKeys.size}</b> of <b>${people.length}</b> attending people · ${total} seats${blockedSet.size ? ` (${blockedSet.size} blocked)` : ''}${over > 0 ? ` · <span class="seat-warn">${over} more guest${over===1?'':'s'} than open seats</span>` : ''}</div>
+        <div class="hint" id="seatMsg">${escapeHtml(hint)}</div>
+        <div class="unseated ${mode==='block'?'hide':''}">${people.length === 0 ? '<span class="hint">No attending guests yet — they appear here as people RSVP Yes.</span>' : (unseated.length === 0 ? '<span class="hint">Everyone is seated ✓</span>' : unseated.map(p=>`<button type="button" class="pchip${sel===p.key?' sel':''}" data-pkey="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>`).join(''))}</div>
         ${chart}
-        <div class="hint" style="margin-top:14px;">Seating is saved with the Save Draft / Publish buttons below. Removing an RSVP on the Dashboard frees its seats automatically.</div>
+        <div class="hint" style="margin-top:14px;">Seat assignments save instantly. The layout, table names and blocked seats save with Save Draft / Publish. Removing an RSVP frees its seats automatically.</div>
       </div>`;
+    holder.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click', ()=>{ mode = el.dataset.mode; sel = null; msg = ''; paintChart(); }));
     holder.querySelectorAll('.pchip').forEach(el=>el.addEventListener('click', ()=>{ sel = (sel===el.dataset.pkey) ? null : el.dataset.pkey; msg = ''; paintChart(); }));
-    holder.querySelectorAll('.seat').forEach(el=>el.addEventListener('click', ()=>{
+    holder.querySelectorAll('.seat').forEach(el=>el.addEventListener('click', async ()=>{
       const sid = el.dataset.sid;
-      if(seating.assign[sid]){ delete seating.assign[sid]; msg = ''; dirty = true; }
-      else if(sel){ seating.assign[sid] = sel; sel = null; msg = ''; dirty = true; }
-      else { msg = 'Pick a guest from the list first, then tap the seat.'; }
+      if(mode==='block'){
+        const i = seating.blocked.indexOf(sid);
+        if(i>=0) seating.blocked.splice(i,1); else seating.blocked.push(sid);
+        dirty = true; msg = ''; paintChart(); return;
+      }
+      try{
+        if(assignMap[sid]){ await seatOp({op:'unset', sid}); msg = ''; }
+        else if(sel){ await seatOp({op:'set', sid, key: sel}); sel = null; msg = ''; }
+        else { msg = 'Pick a guest from the list first, then tap the seat.'; }
+      }catch(e){ alert('That did not save — please try again.'); }
       paintChart();
     }));
     holder.querySelectorAll('[data-rename]').forEach(el=>el.addEventListener('click', ()=>{
       const t = +el.dataset.rename;
+      if(mode==='block'){
+        const sids = []; for(let k=0;k<seating.perTable;k++) sids.push(t + ':' + k);
+        const allBlocked = sids.every(x=>seating.blocked.includes(x));
+        seating.blocked = seating.blocked.filter(x=>!sids.includes(x));
+        if(!allBlocked) seating.blocked.push(...sids);
+        dirty = true; msg = ''; paintChart(); return;
+      }
       const v = prompt('Name this ' + (seating.layout==='rows' ? 'row' : 'table') + ':', seatTableLabel(seating, t));
       if(v === null) return;
       if(v.trim()) seating.names[t] = v.trim(); else delete seating.names[t];
@@ -1520,6 +1594,7 @@ async function renderGuestView(slug){
         <div class="section-label">Kindly Respond</div>
         <div id="guestFormHolder"></div>
         <div class="thankyou hide" id="thankyouBlock"></div>
+        <div id="seatSlot"></div>
         <div id="giftsSlot"></div>
       </div>
     </div>
@@ -1531,14 +1606,32 @@ async function renderGuestView(slug){
   function paintGuestForm(){
     const holder = document.getElementById('guestFormHolder');
     holder.innerHTML = '';
+    const partyQ = findPartySizeQuestion(questions);
+    const isPlusOneQ = qq => qq.type==='short_answer' && /plus.?one|companion|additional guest/i.test(qq.title);
+    let numInputEl = null, plusInputEl = null, plusFieldEl = null, plusQ = null;
+    function currentParty(){
+      const raw = numInputEl ? parseInt(numInputEl.value,10) : NaN;
+      if(!Number.isNaN(raw)) return raw;
+      return partySizeMaxFor()===1 ? 1 : null;   // no plus-ones allowed at all -> party is just the guest
+    }
+    function syncPlusOne(){
+      if(!plusInputEl) return;
+      const n = currentParty(), off = (n === 1);
+      plusInputEl.disabled = off;
+      plusInputEl.placeholder = off ? "Not needed — you're coming on your own" : (n > 2 ? 'Names of your ' + (n-1) + ' plus-ones' : (n === 2 ? "Your plus-one's name" : 'Your answer'));
+      plusFieldEl.classList.toggle('is-off', off);
+      if(off){ plusInputEl.value = ''; delete answers[plusQ.id]; }
+    }
     questions.forEach(q=>{
       if(!questionVisible(q, answers)) return;
       const field = document.createElement('div');
       field.className = (q.type==='section_divider'||q.type==='title_block') ? '' : 'pv-field';
       renderField(q, field, answers, paintGuestForm);
-      if(q.type==='number' && /number of guest|party size|total guest|how many guest/i.test(q.title)){
+      if(isPlusOneQ(q)){ plusQ = q; plusFieldEl = field; plusInputEl = field.querySelector('input[type=text]'); }
+      if(q === partyQ && q.type==='number'){
         const numInput = field.querySelector('input[type=number]');
         if(numInput){
+          numInputEl = numInput;
           const max = partySizeMaxFor();
           numInput.min = '1';
           if(max!==null){
@@ -1558,17 +1651,22 @@ async function renderGuestView(slug){
               answers[q.id] = String(v);
             });
           }
+          numInput.addEventListener('input', syncPlusOne);
         }
       }
       holder.appendChild(field);
     });
+    syncPlusOne();
     const submit = tag('button',{class:'pv-submit'}); submit.textContent='Submit RSVP';
     submit.onclick = async ()=>{
-      const missing = questions.some(q=> q.required && questionVisible(q,answers) && !answers[q.id]);
+      const plusOff = !!plusQ && currentParty() === 1;
+      const missing = questions.some(q=> q.required && questionVisible(q,answers) && !answers[q.id] && !(plusOff && q === plusQ));
       if(missing){ alert('Please fill in the required fields.'); return; }
+      if(plusOff) delete answers[plusQ.id];
       submit.disabled = true; submit.textContent = 'Submitting…';
       try{
-        await apiSend(API+'/'+encodeURIComponent(slug)+'/responses', 'POST', { answers });
+        const posted = await apiSend(API+'/'+encodeURIComponent(slug)+'/responses', 'POST', { answers });
+        try{ localStorage.setItem('imb_rid_' + slug, posted.id); }catch(e){}
         holder.classList.add('hide');
         const aq = questions.find(q=>q.type==='yes_no_maybe' || q.type==='yes_no');
         const status = aq ? answers[aq.id] : null;
@@ -1579,6 +1677,7 @@ async function renderGuestView(slug){
         tb.classList.remove('hide');
         const answerKey = status==='No' ? 'no' : status==='Maybe' ? 'maybe' : 'yes';
         if(giftAudience(e2).has(answerKey)) document.getElementById('giftsSlot').innerHTML = renderGiftsSectionHtml(e2);
+        if(isYes && seatCfgPublic.enabled && seatCfgPublic.guestPick) startSeatPicker(posted.id);
       }catch(err){
         submit.disabled = false; submit.textContent = 'Submit RSVP';
         alert('Something went wrong submitting your RSVP — please try again.');
@@ -1586,7 +1685,82 @@ async function renderGuestView(slug){
     };
     holder.appendChild(submit);
   }
+  const seatCfgPublic = parseSeating(e2.seating_json);
+  async function startSeatPicker(rid){
+    const slot = document.getElementById('seatSlot');
+    const seatsUrl = API+'/'+encodeURIComponent(slug)+'/seats';
+    let data;
+    try{ data = await apiGet(seatsUrl + '?rid=' + encodeURIComponent(rid)); }catch(err){ return; }
+    const cfg = data.config;
+    if(!cfg || !cfg.enabled || !cfg.guestPick || !data.mine || !data.mine.attending){ slot.innerHTML = ''; return; }
+    const party = data.mine.party;
+    const blockedSet = new Set(cfg.blocked || []);
+    let saved = new Set(data.mine.sids || []), draft = new Set(saved), note = '';
+    const label = sid => { const q = sid.split(':'); return seatTableLabel(cfg, +q[0]) + ' · seat ' + (+q[1] + 1); };
+    const sortSids = arr => arr.slice().sort((a,b)=>{ const x=a.split(':').map(Number), y=b.split(':').map(Number); return x[0]-y[0] || x[1]-y[1]; });
+    function paint(){
+      if(data.mine.locked){
+        slot.innerHTML = '<hr class="divider"><div class="section-label">Your Seating</div><div class="seat-saved">The hosts have arranged your seating: ' + sortSids([...saved]).map(label).map(escapeHtml).join(', ') + '.</div>';
+        return;
+      }
+      const assign = data.assign || {};
+      const seatBtn = (t, k)=>{
+        const sid = t + ':' + k;
+        let cls = 'seat', lbl = String(k + 1), dis = false, ttl = 'Available';
+        if(draft.has(sid)){ cls += ' mine'; ttl = 'Your seat'; }
+        else if(assign[sid] && !saved.has(sid)){ cls += ' taken'; lbl = ''; dis = true; ttl = 'Taken'; }
+        else if(blockedSet.has(sid) && !assign[sid]){ cls += ' resv'; lbl = '🔒'; dis = true; ttl = 'Reserved'; }
+        return `<button type="button" class="${cls}" data-sid="${sid}" title="${ttl}"${dis ? ' disabled' : ''}>${lbl}</button>`;
+      };
+      const free = t => { let n = 0; for(let k=0;k<cfg.perTable;k++){ const sid = t + ':' + k; if(!assign[sid] && !blockedSet.has(sid)) n++; } return n; };
+      const chart = seatChartHtml(cfg, {
+        seat: seatBtn,
+        name: (t, kind)=> kind==='row'
+          ? `<span class="row-label" style="cursor:default">${escapeHtml(seatTableLabel(cfg, t))}</span>`
+          : `<div class="tbl-name static">${escapeHtml(seatTableLabel(cfg, t))}</div>`,
+        center: t => free(t) + ' free',
+      });
+      slot.innerHTML = `
+        <hr class="divider">
+        <div class="section-label">Choose Your Seats</div>
+        <p class="pv-help" style="margin:-2px 0 4px;">${party===1 ? "Pick the seat you'd like." : "You're bringing " + party + " guests in total — pick up to " + party + " seats."} Tap a seat to choose it, tap again to let it go.</p>
+        <div class="seat-legend"><span><i></i> Available</span><span><i class="l-mine"></i> Yours</span><span><i class="l-taken"></i> Taken</span><span><i class="l-resv"></i> Reserved</span></div>
+        <div class="guest-seats">${chart}</div>
+        <div class="pv-help" style="margin-top:10px;">${draft.size} of ${party} chosen</div>
+        <div class="pv-warn" id="seatNote">${escapeHtml(note)}</div>
+        <button type="button" class="pv-submit" id="seatConfirm">${saved.size ? 'Update my seats' : 'Confirm my seats'}</button>
+        ${saved.size ? '<div class="seat-saved">✓ Your seats: ' + sortSids([...saved]).map(label).map(escapeHtml).join(', ') + '</div>' : ''}`;
+      slot.querySelectorAll('.seat:not([disabled])').forEach(el=>el.addEventListener('click', ()=>{
+        const sid = el.dataset.sid;
+        if(draft.has(sid)) draft.delete(sid);
+        else if(draft.size >= party){ note = 'You can choose up to ' + party + ' seat' + (party===1?'':'s') + ' — tap one of yours to let it go first.'; paint(); return; }
+        else draft.add(sid);
+        note = ''; paint();
+      }));
+      document.getElementById('seatConfirm').addEventListener('click', async ()=>{
+        if(draft.size === 0){ note = 'Tap at least one seat first.'; paint(); return; }
+        const btn = document.getElementById('seatConfirm'); btn.disabled = true; btn.textContent = 'Saving…';
+        let resp, r = {};
+        try{
+          resp = await fetch(seatsUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({op:'guest_pick', rid, sids:[...draft]})});
+          r = await resp.json().catch(()=>({}));
+        }catch(err){ resp = {ok:false}; }
+        if(resp.ok){
+          data.assign = r.assign; data.mine = r.mine; saved = new Set(r.mine.sids); draft = new Set(saved); note = '';
+        } else {
+          if(r.assign){ data.assign = r.assign; }
+          if(r.mine){ data.mine = r.mine; saved = new Set(r.mine.sids); }
+          draft = new Set([...draft].filter(sid=>!(data.assign[sid] && !saved.has(sid)) && !blockedSet.has(sid)));
+          note = r.error || 'Something went wrong — please try again.';
+        }
+        paint();
+      });
+    }
+    paint();
+  }
   paintGuestForm();
+  let returningRid = null; try{ returningRid = localStorage.getItem('imb_rid_' + slug); }catch(e){}
+  if(returningRid && seatCfgPublic.enabled && seatCfgPublic.guestPick) startSeatPicker(returningRid);
 }
 function renderGiftsSectionHtml(e2){
   const hasRegistry = !!e2.registry_url;
@@ -1638,6 +1812,8 @@ async function renderDashGate(slug){
       const allowed = emails.includes(email) || (e2.owner_email && e2.owner_email.toLowerCase()===email);
       if(!allowed){ document.getElementById('gateError').classList.remove('hide'); return; }
       const { responses } = await apiGet(API+'/'+encodeURIComponent(slug)+'/responses');
+      let seatAssign = {};
+      try{ seatAssign = (await apiGet(API+'/'+encodeURIComponent(slug)+'/seats')).assign || {}; }catch(e){}
       const qs = JSON.parse(e2.questions_json||'[]');
       applyTheme(resolveTheme(JSON.parse(e2.theme_json||'{}')));
       root.innerHTML = `
@@ -1646,7 +1822,7 @@ async function renderDashGate(slug){
         <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Viewing as ${escapeHtml(email)} · read-only</p>
         <div id="dashHolder"></div>
       `;
-      paintDashboard(document.getElementById('dashHolder'), responses, qs, false, e2.expected_attendees, e2);
+      paintDashboard(document.getElementById('dashHolder'), responses, qs, false, e2.expected_attendees, e2, seatAssign);
     }catch(err){
       document.getElementById('gateError').textContent = 'Something went wrong loading this dashboard.';
       document.getElementById('gateError').classList.remove('hide');
