@@ -251,6 +251,45 @@
   .progress .cap{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:5px;}
   .pv-warn{font-size:11.5px;color:var(--rose);margin-top:5px;min-height:14px;}
   .thankyou p{margin:0 0 9px;line-height:1.7;}
+  /* --- QR codes, delete, seating --- */
+  .pm-qr-cell{grid-column:1 / -1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .pm-qr-thumb{width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff;}
+  .qr-upload-btn{border:1px dashed var(--gold);background:transparent;color:var(--forest-deep);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;}
+  .pm-disp-row{display:block !important;}
+  .pm-disp-qr{margin-top:8px;}
+  .pm-qr{width:150px;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;cursor:zoom-in;display:block;}
+  .pm-qr.big{width:min(100%,300px);height:auto;aspect-ratio:1/1;cursor:zoom-out;}
+  .pm-qr-save{font-size:11.5px;color:var(--muted);text-decoration:underline;display:inline-block;margin-top:4px;}
+  .del-cell{width:44px;text-align:right;}
+  .layout-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0 4px;}
+  .layout-card{border:2px solid var(--line);border-radius:12px;padding:12px 8px;text-align:center;cursor:pointer;background:var(--white);font-size:12px;}
+  .layout-card.active{border-color:var(--gold);background:var(--paper-deep);}
+  .layout-card .lc-ic{font-size:26px;display:block;margin-bottom:4px;}
+  .seat-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  .seat-btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .seat-summary{font-size:12.5px;color:var(--ink);margin:0 0 4px;}
+  .seat-warn{color:var(--rose);}
+  .unseated{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px;}
+  .pchip{border:1px solid var(--line);background:var(--white);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;}
+  .pchip.sel{background:var(--forest-deep);color:var(--paper);border-color:var(--forest-deep);}
+  .seat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tw,160px),1fr));gap:20px 12px;margin-top:16px;justify-items:center;}
+  .tbl{display:flex;flex-direction:column;align-items:center;}
+  .tbl-name{font-size:12px;font-weight:500;color:var(--forest-deep);cursor:pointer;margin-bottom:6px;text-decoration:underline dotted;}
+  .round-wrap{position:relative;}
+  .round-wrap .seat{position:absolute;}
+  .round-table{position:absolute;border-radius:50%;background:var(--paper-deep);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);}
+  .seat{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:var(--white);font-size:11px;font-weight:600;color:var(--ink);cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;}
+  .seat.filled{background:var(--forest-deep);color:var(--paper);border-color:var(--forest-deep);}
+  .seat.target{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,147,95,.35);}
+  .long-table{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .seat-line{display:flex;gap:6px;}
+  .long-top{background:var(--paper-deep);border:2px solid var(--line);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--muted);width:100%;text-align:center;}
+  .rows-scroll{overflow-x:auto;margin-top:16px;}
+  .rows-wrap{display:flex;flex-direction:column;gap:8px;align-items:center;min-width:max-content;margin:0 auto;}
+  .rows-stage{background:var(--forest-deep);color:var(--paper);border-radius:8px;padding:8px 40px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;}
+  .row-line{display:flex;align-items:center;gap:6px;}
+  .row-label{width:60px;font-size:11px;color:var(--muted);text-align:right;margin-right:6px;cursor:pointer;}
+  .row-aisle{width:26px;}
 </style>
 </head>
 <body>
@@ -500,6 +539,7 @@ let ev = null;        // current event record from the API
 let form = [];         // parsed questions_json
 let themeObj = null;   // parsed theme_json
 let paymentMethods = []; // parsed payment_methods_json
+let seating = null;     // parsed seating_json
 let dirty = false;
 
 async function renderEditor(slug){
@@ -511,6 +551,7 @@ async function renderEditor(slug){
   form = JSON.parse(ev.questions_json || '[]');
   themeObj = JSON.parse(ev.theme_json || '{}');
   paymentMethods = JSON.parse(ev.payment_methods_json || '[]');
+  seating = parseSeating(ev.seating_json);
   applyTheme(resolveTheme(themeObj));
 
   root.innerHTML = `
@@ -533,6 +574,7 @@ async function renderEditor(slug){
       <button class="apptab-btn" data-tab="theme">Theme</button>
       <button class="apptab-btn" data-tab="questions">Questionnaire</button>
       <button class="apptab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="apptab-btn" data-tab="seating">Seating</button>
       <button class="apptab-btn" data-tab="share">Share</button>
     </div>
     <div id="tabContent"></div>
@@ -577,6 +619,7 @@ async function persistEvent(status){
       plus_one_limit: Number.isNaN(parseInt(ev.plus_one_limit,10)) ? 1 : parseInt(ev.plus_one_limit,10),
       expected_attendees: parseInt(ev.expected_attendees,10) || 0,
       gift_show_on: ev.gift_show_on || 'no,maybe',
+      seating_json: JSON.stringify(seating || parseSeating('')),
       thank_yes_message: ev.thank_yes_message || '',
       thank_decline_message: ev.thank_decline_message || '',
     };
@@ -598,6 +641,7 @@ function renderTab(t){
   if(t==='theme') return renderThemeTab(c);
   if(t==='questions') return renderQuestionsTab(c);
   if(t==='dashboard') return renderDashboardTab(c);
+  if(t==='seating') return renderSeatingTab(c);
   if(t==='share') return renderShareTab(c);
 }
 
@@ -684,6 +728,29 @@ function renderDetailsTab(c){
   renderGiftRegistryPanel(c);
 }
 
+function fileToQrDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    if(!/^image\//.test(file.type || '')) return reject(new Error('not an image'));
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('bad image'));
+      img.onload = ()=>{
+        const max = 420, scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+        let out = cv.toDataURL('image/png');
+        if(out.length > 250000) out = cv.toDataURL('image/jpeg', 0.85);
+        resolve(out);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+document.addEventListener('click', e=>{ if(e.target.classList && e.target.classList.contains('pm-qr')) e.target.classList.toggle('big'); });
 const PAYMENT_METHOD_PRESETS = ['GCash','Maya','PayPal','Bank Transfer','Other'];
 function renderGiftRegistryPanel(c){
   const cashOn = !!ev.cash_gift_enabled;
@@ -747,6 +814,12 @@ function renderGiftRegistryPanel(c){
         ${isOther ? `<input type="text" class="pm-method-custom" placeholder="Method name" value="${escapeHtml(pm.method)}">` : `<input type="text" class="pm-account-name" placeholder="Account name" value="${escapeHtml(pm.accountName)}">`}
         ${isOther ? `<input type="text" class="pm-account-number" placeholder="Account / instructions" value="${escapeHtml(pm.accountNumber)}">` : `<input type="text" class="pm-account-number" placeholder="Account number" value="${escapeHtml(pm.accountNumber)}">`}
         <button class="pm-remove-btn" data-act="pmdel">✕</button>
+        <div class="pm-qr-cell">
+          ${pm.qr ? `<img class="pm-qr-thumb" src="${escapeHtml(pm.qr)}" alt="QR code">` : ''}
+          <button type="button" class="qr-upload-btn" data-act="qrpick">${pm.qr ? 'Replace QR code' : 'Upload QR code (optional)'}</button>
+          ${pm.qr ? '<button type="button" class="pm-remove-btn" data-act="qrdel" title="Remove QR code">✕</button>' : ''}
+          <input type="file" accept="image/*" class="pm-qr-file" style="display:none">
+        </div>
       </div>`;
     }).join('');
     wrap.querySelectorAll('.pm-editor-row').forEach(row=>{
@@ -762,6 +835,15 @@ function renderGiftRegistryPanel(c){
       if(nameInput) nameInput.addEventListener('input', e=>{ paymentMethods[idx].accountName = e.target.value; dirty = true; });
       row.querySelector('.pm-account-number').addEventListener('input', e=>{ paymentMethods[idx].accountNumber = e.target.value; dirty = true; });
       row.querySelector('[data-act="pmdel"]').addEventListener('click', ()=>{ paymentMethods.splice(idx,1); dirty = true; paintPmRows(); });
+      const qrFile = row.querySelector('.pm-qr-file');
+      row.querySelector('[data-act="qrpick"]').addEventListener('click', ()=> qrFile.click());
+      qrFile.addEventListener('change', async ()=>{
+        const f = qrFile.files && qrFile.files[0]; if(!f) return;
+        try{ paymentMethods[idx].qr = await fileToQrDataUrl(f); dirty = true; paintPmRows(); }
+        catch(err){ alert('Could not read that image — please try a PNG or JPG.'); }
+      });
+      const qrDel = row.querySelector('[data-act="qrdel"]');
+      if(qrDel) qrDel.addEventListener('click', ()=>{ delete paymentMethods[idx].qr; dirty = true; paintPmRows(); });
     });
   }
 }
@@ -1059,9 +1141,11 @@ function buildDetailGroups(r, qs){
     const display = Array.isArray(val) ? val.join(', ') : val;
     groups[g].push({label:q.title, value:display});
   });
+  if(dashSeatMap[r.id]) groups.Party.push({label:'Seating', value:[...dashSeatMap[r.id]].join(', ')});
   return order.filter(g=>groups[g].length).map(g=>({name:g, items:groups[g]}));
 }
 let dashResponses = [];
+let dashSeatMap = {};
 async function renderDashboardTab(c){
   c.innerHTML = `<div class="loading-note">Loading responses…</div>`;
   try{ const data = await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses'); dashResponses = data.responses; }
@@ -1076,6 +1160,12 @@ function computeDashStats(responses, qs){
 function paintDashboard(c, responses, qs, editable, expected, evt){
   const pInfo = plusInfo(evt || {plus_one_policy:'unlimited'});
   dashPartyMax = pInfo.unlimited ? null : 1 + pInfo.limit;
+  dashSeatMap = {};
+  const sj = parseSeating(evt && evt.seating_json);
+  if(sj.enabled) Object.entries(sj.assign).forEach(([sid, key])=>{
+    const rid = String(key).split('#')[0], t = parseInt(sid.split(':')[0],10);
+    (dashSeatMap[rid] = dashSeatMap[rid] || new Set()).add(seatTableLabel(sj, t));
+  });
   let overCount = 0;
   if(dashPartyMax !== null) responses.forEach(r=>{ if(responseStatus(r,qs)==='attending' && rawPartySize(r,qs) > dashPartyMax) overCount++; });
   const stats = computeDashStats(responses, qs);
@@ -1095,7 +1185,7 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
       <h4>Responses</h4>
       <p style="font-size:12px;color:var(--muted);margin-top:-6px;">Click a guest's name to see everything they submitted.</p>
       <div class="toolbar"><input type="text" id="searchInput" placeholder="Search guest..."><select id="statusFilter"><option value="">All statuses</option><option value="attending">Attending</option><option value="declined">Not Attending</option><option value="maybe">Maybe</option></select>${editable?'<button class="btn secondary" id="exportBtn">Export CSV</button><button class="btn secondary" id="refreshBtn">Refresh</button>':''}</div>
-      <div class="table-wrap"><table class="gtable"><thead><tr><th>Guest</th><th>Status</th><th>Party</th><th>Submitted</th></tr></thead><tbody id="guestTableBody"></tbody></table></div>
+      <div class="table-wrap"><table class="gtable"><thead><tr><th>Guest</th><th>Status</th><th>Party</th><th>Submitted</th>${editable?'<th></th>':''}</tr></thead><tbody id="guestTableBody"></tbody></table></div>
       <div class="empty-note hide" id="emptyNote">No responses match your filters.</div>
     </div>
   `;
@@ -1113,8 +1203,8 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
       return `
       <tr class="detail-toggle" data-ridx="${i}"><td><b>${escapeHtml(name)}</b></td><td><span class="status-badge status-${status}">${escapeHtml(STATUS_LABELS[status]||status)}</span></td>
       <td>${status==='attending' ? responsePartySize(r,qs,status)+' pax' : '—'}</td>
-      <td style="font-size:11px;color:var(--muted);">${new Date(r.submitted_at).toLocaleString()}</td></tr>
-      <tr class="detail-row hide" data-rdetail="${i}"><td colspan="4">
+      <td style="font-size:11px;color:var(--muted);">${new Date(r.submitted_at).toLocaleString()}</td>${editable ? `<td class="del-cell"><button type="button" class="icon-btn" data-del="${escapeHtml(r.id)}" title="Remove this response">🗑</button></td>` : ''}</tr>
+      <tr class="detail-row hide" data-rdetail="${i}"><td colspan="${editable ? 5 : 4}">
         ${groups.length ? `<div class="detail-groups">${groups.map(g=>`
           <div class="dg-card"><h5>${escapeHtml(g.name)}</h5>${g.items.map(it=>`<div class="dg-row"><span class="dg-k">${escapeHtml(it.label)}</span><span class="dg-v">${escapeHtml(it.value)}</span></div>`).join('')}</div>
         `).join('')}</div>` : `<div class="empty-note">No additional details submitted.</div>`}
@@ -1124,6 +1214,19 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
       tr.addEventListener('click', ()=>{
         const detail = body.querySelector(`tr[data-rdetail="${tr.dataset.ridx}"]`);
         detail.classList.toggle('hide');
+      });
+    });
+    body.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const rid = btn.dataset.del;
+        const resp = responses.find(x=>x.id===rid);
+        const nm = resp ? responseName(resp, qs) : 'this guest';
+        if(!confirm('Remove ' + nm + "'s RSVP? This can't be undone, and the attendee numbers will update.")) return;
+        try{ await apiSend(API+'/'+encodeURIComponent(ev.slug)+'/responses/'+encodeURIComponent(rid), 'DELETE'); }
+        catch(err){ alert('Could not remove it — please try again.'); return; }
+        if(seating) Object.keys(seating.assign).forEach(sid=>{ if(String(seating.assign[sid]).split('#')[0]===rid) delete seating.assign[sid]; });
+        renderDashboardTab(c);
       });
     });
   }
@@ -1144,6 +1247,169 @@ function paintDashboard(c, responses, qs, editable, expected, evt){
     });
   }
   paintTable();
+}
+
+/* ---- Seating arrangement (editor only; can be switched off) ---- */
+function parseSeating(raw){
+  let o = {}; try{ o = JSON.parse(raw || '{}') || {}; }catch(e){}
+  return {
+    enabled: !!o.enabled,
+    layout: ['round','long','rows'].includes(o.layout) ? o.layout : 'round',
+    count: Math.min(60, Math.max(1, parseInt(o.count,10) || 8)),
+    perTable: Math.min(30, Math.max(1, parseInt(o.perTable,10) || 8)),
+    names: o.names || {},
+    assign: o.assign || {},
+  };
+}
+function seatTableLabel(sj, t){ return (sj.names && sj.names[t]) || ((sj.layout==='rows' ? 'Row ' : 'Table ') + (t+1)); }
+function seatingPeople(responses){
+  const pi = plusInfo(ev); dashPartyMax = pi.unlimited ? null : 1 + pi.limit;
+  const people = [];
+  responses.forEach(r=>{
+    if(responseStatus(r, form) !== 'attending') return;
+    const name = responseName(r, form), n = responsePartySize(r, form, 'attending');
+    for(let i=0;i<n;i++) people.push({key: r.id + '#' + i, rid: r.id, label: i===0 ? name : name + ' +' + i});
+  });
+  return people;
+}
+async function renderSeatingTab(c){
+  c.innerHTML = `<div class="loading-note">Loading guests…</div>`;
+  let responses = [];
+  try{ responses = (await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses')).responses; }catch(e){}
+  const people = seatingPeople(responses);
+  const byKey = {}; people.forEach(p=>{ byKey[p.key] = p; });
+  let sel = null, msg = '';
+
+  function cleanAssign(){
+    const seen = new Set();
+    Object.keys(seating.assign).forEach(sid=>{
+      const parts = sid.split(':'), t = +parts[0], k = +parts[1], key = seating.assign[sid];
+      if(!byKey[key] || t >= seating.count || k >= seating.perTable || seen.has(key)) delete seating.assign[sid];
+      else seen.add(key);
+    });
+  }
+  function paintControls(){
+    const L = seating.layout;
+    const nounPlural = L==='rows' ? 'rows' : (L==='long' ? 'long tables' : 'round tables');
+    const nounSeat = L==='rows' ? 'row' : 'table';
+    c.innerHTML = `
+      <div class="panel">
+        <h4>Seating Arrangement</h4>
+        <div class="toggle-row"><input type="checkbox" id="seatEnabled" ${seating.enabled ? 'checked' : ''}><span style="font-size:13px;">Use a seating arrangement for this event</span></div>
+        <div class="hint" style="margin-top:-6px;">Turn this off if you don't need it — tables won't show anywhere.</div>
+        <div id="seatControls" class="${seating.enabled ? '' : 'hide'}">
+          <div class="layout-cards">
+            <div class="layout-card ${L==='round'?'active':''}" data-layout="round"><span class="lc-ic">⭕</span>Round tables</div>
+            <div class="layout-card ${L==='long'?'active':''}" data-layout="long"><span class="lc-ic">▭</span>Long tables</div>
+            <div class="layout-card ${L==='rows'?'active':''}" data-layout="rows"><span class="lc-ic">▦</span>Ceremony rows</div>
+          </div>
+          <div class="seat-fields">
+            <div class="field"><label>Number of ${nounPlural}</label><input type="number" id="seatCount" min="1" max="60" value="${seating.count}"></div>
+            <div class="field"><label>Seats per ${nounSeat}</label><input type="number" id="seatPer" min="1" max="30" value="${seating.perTable}"></div>
+          </div>
+          <div class="seat-btnrow">
+            <button type="button" class="btn secondary" id="seatAuto">Auto-seat everyone</button>
+            <button type="button" class="btn danger" id="seatClear">Clear all seats</button>
+          </div>
+        </div>
+      </div>
+      <div id="seatChartHolder" class="${seating.enabled ? '' : 'hide'}"></div>`;
+    document.getElementById('seatEnabled').addEventListener('change', e=>{ seating.enabled = e.target.checked; dirty = true; paintControls(); });
+    c.querySelectorAll('.layout-card').forEach(el=>el.addEventListener('click', ()=>{ seating.layout = el.dataset.layout; dirty = true; paintControls(); }));
+    document.getElementById('seatCount').addEventListener('input', e=>{ seating.count = Math.min(60, Math.max(1, parseInt(e.target.value,10) || 1)); dirty = true; paintChart(); });
+    document.getElementById('seatPer').addEventListener('input', e=>{ seating.perTable = Math.min(30, Math.max(1, parseInt(e.target.value,10) || 1)); dirty = true; paintChart(); });
+    document.getElementById('seatClear').addEventListener('click', ()=>{ seating.assign = {}; sel = null; msg = ''; dirty = true; paintChart(); });
+    document.getElementById('seatAuto').addEventListener('click', ()=>{
+      cleanAssign();
+      const used = new Set(Object.values(seating.assign));
+      const queue = people.filter(p=>!used.has(p.key));
+      for(let t=0; t<seating.count && queue.length; t++){
+        for(let k=0; k<seating.perTable && queue.length; k++){
+          const sid = t + ':' + k;
+          if(!seating.assign[sid]) seating.assign[sid] = queue.shift().key;
+        }
+      }
+      sel = null; msg = queue.length ? queue.length + ' guest' + (queue.length===1?'':'s') + " didn't fit — add more tables or seats." : '';
+      dirty = true; paintChart();
+    });
+    paintChart();
+  }
+  function paintChart(){
+    const holder = document.getElementById('seatChartHolder');
+    if(!holder || !seating.enabled) return;
+    cleanAssign();
+    const L = seating.layout, total = seating.count * seating.perTable;
+    const seatedKeys = new Set(Object.values(seating.assign));
+    const unseated = people.filter(p=>!seatedKeys.has(p.key));
+    const seatBtn = (t, k)=>{
+      const sid = t + ':' + k, key = seating.assign[sid], p = key && byKey[key];
+      return `<button type="button" class="seat${p ? ' filled' : ''}${(!p && sel) ? ' target' : ''}" data-sid="${sid}" title="${escapeHtml(p ? p.label : 'Empty seat')}">${p ? escapeHtml(p.label.charAt(0).toUpperCase()) : ''}</button>`;
+    };
+    const filledIn = t => Object.keys(seating.assign).filter(sid=>sid.startsWith(t + ':')).length;
+    const nameEl = t => `<div class="tbl-name" data-rename="${t}" title="Tap to rename">${escapeHtml(seatTableLabel(seating, t))}</div>`;
+    const n = seating.perTable;
+    let chart = '';
+    if(L==='round'){
+      const r = Math.max(48, Math.ceil(n * 34 / (2 * Math.PI))), size = 2 * (r + 18), d = 2 * (r - 20);
+      let tables = '';
+      for(let t=0; t<seating.count; t++){
+        let seats = '';
+        for(let k=0; k<n; k++){
+          const a = (2 * Math.PI * k / n) - Math.PI / 2;
+          const x = Math.round(size/2 + r*Math.cos(a) - 14), y = Math.round(size/2 + r*Math.sin(a) - 14);
+          seats += seatBtn(t,k).replace('<button ', `<button style="left:${x}px;top:${y}px" `);
+        }
+        tables += `<div class="tbl">${nameEl(t)}<div class="round-wrap" style="width:${size}px;height:${size}px;"><div class="round-table" style="width:${d}px;height:${d}px;left:${(size-d)/2}px;top:${(size-d)/2}px;">${filledIn(t)}/${n}</div>${seats}</div></div>`;
+      }
+      chart = `<div class="seat-grid" style="--tw:${size + 16}px">${tables}</div>`;
+    } else if(L==='long'){
+      const top = Math.ceil(n/2);
+      let tables = '';
+      for(let t=0; t<seating.count; t++){
+        let a = '', b = '';
+        for(let k=0; k<top; k++) a += seatBtn(t,k);
+        for(let k=top; k<n; k++) b += seatBtn(t,k);
+        tables += `<div class="tbl">${nameEl(t)}<div class="long-table"><div class="seat-line">${a}</div><div class="long-top">${filledIn(t)}/${n}</div><div class="seat-line">${b}</div></div></div>`;
+      }
+      chart = `<div class="seat-grid" style="--tw:${top * 34 + 24}px">${tables}</div>`;
+    } else {
+      const left = Math.ceil(n/2);
+      let rowsHtml = '';
+      for(let t=0; t<seating.count; t++){
+        let a = '', b = '';
+        for(let k=0; k<left; k++) a += seatBtn(t,k);
+        for(let k=left; k<n; k++) b += seatBtn(t,k);
+        rowsHtml += `<div class="row-line"><span class="row-label" data-rename="${t}" title="Tap to rename">${escapeHtml(seatTableLabel(seating, t))}</span>${a}<span class="row-aisle"></span>${b}</div>`;
+      }
+      chart = `<div class="rows-scroll"><div class="rows-wrap"><div class="rows-stage">Altar / Stage</div>${rowsHtml}</div></div>`;
+    }
+    const over = people.length - total;
+    holder.innerHTML = `
+      <div class="panel">
+        <h4>Seat Chart</h4>
+        <div class="seat-summary">Seated <b>${seatedKeys.size}</b> of <b>${people.length}</b> attending people · ${total} seats in total${over > 0 ? ` · <span class="seat-warn">${over} more guest${over===1?'':'s'} than seats</span>` : ''}</div>
+        <div class="hint" id="seatMsg">${escapeHtml(msg || (sel ? 'Now tap an empty seat to place them.' : 'Tap a guest below, then tap an empty seat. Tap a filled seat to take that guest off it.'))}</div>
+        <div class="unseated">${people.length === 0 ? '<span class="hint">No attending guests yet — they appear here as people RSVP Yes.</span>' : (unseated.length === 0 ? '<span class="hint">Everyone is seated ✓</span>' : unseated.map(p=>`<button type="button" class="pchip${sel===p.key?' sel':''}" data-pkey="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>`).join(''))}</div>
+        ${chart}
+        <div class="hint" style="margin-top:14px;">Seating is saved with the Save Draft / Publish buttons below. Removing an RSVP on the Dashboard frees its seats automatically.</div>
+      </div>`;
+    holder.querySelectorAll('.pchip').forEach(el=>el.addEventListener('click', ()=>{ sel = (sel===el.dataset.pkey) ? null : el.dataset.pkey; msg = ''; paintChart(); }));
+    holder.querySelectorAll('.seat').forEach(el=>el.addEventListener('click', ()=>{
+      const sid = el.dataset.sid;
+      if(seating.assign[sid]){ delete seating.assign[sid]; msg = ''; dirty = true; }
+      else if(sel){ seating.assign[sid] = sel; sel = null; msg = ''; dirty = true; }
+      else { msg = 'Pick a guest from the list first, then tap the seat.'; }
+      paintChart();
+    }));
+    holder.querySelectorAll('[data-rename]').forEach(el=>el.addEventListener('click', ()=>{
+      const t = +el.dataset.rename;
+      const v = prompt('Name this ' + (seating.layout==='rows' ? 'row' : 'table') + ':', seatTableLabel(seating, t));
+      if(v === null) return;
+      if(v.trim()) seating.names[t] = v.trim(); else delete seating.names[t];
+      dirty = true; paintChart();
+    }));
+  }
+  paintControls();
 }
 
 /* ---- Share tab: link, QR, dashboard access, Google Sheet ---- */
@@ -1335,7 +1601,11 @@ function renderGiftsSectionHtml(e2){
     ${hasCash ? `
     <div class="cash-card">
       <div class="cc-title">${escapeHtml(e2.cash_gift_title || 'Cash Gift / Honeymoon Fund')}</div>
-      ${methods.map(pm=>`<div class="pm-disp-row"><div><div class="pm-disp-name">${escapeHtml(pm.method)}</div><div class="pm-disp-sub">${escapeHtml(pm.accountName||'')}${pm.accountName&&pm.accountNumber?' · ':''}${escapeHtml(pm.accountNumber||'')}</div></div></div>`).join('')}
+      ${methods.map(pm=>{
+        const qr = (pm.qr && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(pm.qr)) ? pm.qr : '';
+        const ext = qr.startsWith('data:image/png') ? 'png' : 'jpg';
+        return `<div class="pm-disp-row"><div class="pm-disp-name">${escapeHtml(pm.method)}</div><div class="pm-disp-sub">${escapeHtml(pm.accountName||'')}${pm.accountName&&pm.accountNumber?' · ':''}${escapeHtml(pm.accountNumber||'')}</div>${qr ? `<div class="pm-disp-qr"><img class="pm-qr" src="${qr}" alt="QR code for ${escapeHtml(pm.method)}" title="Tap to enlarge"><a class="pm-qr-save" href="${qr}" download="${escapeHtml((pm.method||'payment') + '-qr')}.${ext}">Save QR image</a></div>` : ''}</div>`;
+      }).join('')}
       ${e2.cash_gift_note ? `<div class="cash-note">${escapeHtml(e2.cash_gift_note)}</div>` : ''}
     </div>` : ''}
   `;
