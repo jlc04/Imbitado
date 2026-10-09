@@ -44,8 +44,8 @@ export async function onRequest({ request, env, params }) {
           { id: 'q_attend', type: 'yes_no_maybe', title: 'Will you attend?', required: true, help: '', options: [], condition: null },
         ]);
         await DB.prepare(
-          `INSERT INTO events (id, slug, name, event_date, event_time, venue_name, venue_address, theme_json, questions_json, status, owner_email, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+          `INSERT INTO events (id, slug, name, event_date, event_time, venue_name, venue_address, theme_json, questions_json, status, owner_email, created_at, updated_at, plus_one_policy, plus_one_limit)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 'limited', 1)`
         )
           .bind(id, s, name, body.event_date || '', body.event_time || '', body.venue_name || '', body.venue_address || '',
                 theme, questions, body.owner_email || '', now, now)
@@ -68,7 +68,8 @@ export async function onRequest({ request, env, params }) {
           `UPDATE events SET name=?, event_date=?, event_time=?, venue_name=?, venue_address=?,
              theme_json=?, questions_json=?, status=?,
              registry_url=?, cash_gift_enabled=?, cash_gift_title=?, cash_gift_note=?, payment_methods_json=?,
-             sheet_webhook_url=?, updated_at=?
+             sheet_webhook_url=?, intro_message=?, plus_one_policy=?, plus_one_limit=?,
+             expected_attendees=?, thank_yes_message=?, thank_decline_message=?, updated_at=?
            WHERE slug = ?`
         )
           .bind(
@@ -80,6 +81,8 @@ export async function onRequest({ request, env, params }) {
             b.cash_gift_title ?? event.cash_gift_title, b.cash_gift_note ?? event.cash_gift_note,
             b.payment_methods_json ?? event.payment_methods_json,
             b.sheet_webhook_url ?? event.sheet_webhook_url,
+            b.intro_message ?? event.intro_message, b.plus_one_policy ?? event.plus_one_policy, b.plus_one_limit ?? event.plus_one_limit,
+            b.expected_attendees ?? event.expected_attendees, b.thank_yes_message ?? event.thank_yes_message, b.thank_decline_message ?? event.thank_decline_message,
             nowIso(), slug
           )
           .run();
