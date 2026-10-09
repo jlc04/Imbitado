@@ -69,7 +69,7 @@ export async function onRequest({ request, env, params }) {
              theme_json=?, questions_json=?, status=?,
              registry_url=?, cash_gift_enabled=?, cash_gift_title=?, cash_gift_note=?, payment_methods_json=?,
              sheet_webhook_url=?, intro_message=?, plus_one_policy=?, plus_one_limit=?,
-             expected_attendees=?, thank_yes_message=?, thank_decline_message=?, gift_show_on=?, updated_at=?
+             expected_attendees=?, thank_yes_message=?, thank_decline_message=?, gift_show_on=?, seating_json=?, updated_at=?
            WHERE slug = ?`
         )
           .bind(
@@ -84,6 +84,7 @@ export async function onRequest({ request, env, params }) {
             b.intro_message ?? event.intro_message, b.plus_one_policy ?? event.plus_one_policy, b.plus_one_limit ?? event.plus_one_limit,
             b.expected_attendees ?? event.expected_attendees, b.thank_yes_message ?? event.thank_yes_message, b.thank_decline_message ?? event.thank_decline_message,
             b.gift_show_on ?? event.gift_show_on,
+            b.seating_json ?? event.seating_json,
             nowIso(), slug
           )
           .run();
@@ -101,6 +102,14 @@ export async function onRequest({ request, env, params }) {
 
     // ---------- /api/events/:slug/responses ----------
     if (sub === 'responses') {
+      // /api/events/:slug/responses/:id  -> remove one RSVP (only if it belongs to this event)
+      if (segs[3]) {
+        if (method === 'DELETE') {
+          await DB.prepare('DELETE FROM responses WHERE id = ? AND event_id = ?').bind(segs[3], event.id).run();
+          return json({ ok: true });
+        }
+        return json({ error: 'method not allowed' }, 405);
+      }
       if (method === 'GET') {
         const { results } = await DB.prepare(
           'SELECT id, answers_json, submitted_at FROM responses WHERE event_id = ? ORDER BY submitted_at DESC'
