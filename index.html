@@ -280,6 +280,10 @@ function plusHintText(e){
   if(i.limit===0) return 'No plus-ones — each invite is for one person.';
   return 'Each guest can bring up to ' + i.limit + ' plus-one' + (i.limit===1?'':'s') + '. The form\'s "Number of guests" stops at ' + (i.limit+1) + '. Change this any time.';
 }
+function giftAudience(e){
+  const raw = (e && e.gift_show_on != null && e.gift_show_on !== '') ? e.gift_show_on : 'no,maybe';
+  return new Set(String(raw).split(',').map(x=>x.trim().toLowerCase()).filter(Boolean));
+}
 function thankYouHtml(msg, isYes){
   const lines = String(msg||'').split('\n').map(l=>l.trim()).filter(Boolean);
   const head = lines[0] || 'Thank you';
@@ -572,6 +576,7 @@ async function persistEvent(status){
       plus_one_policy: ev.plus_one_policy || 'limited',
       plus_one_limit: Number.isNaN(parseInt(ev.plus_one_limit,10)) ? 1 : parseInt(ev.plus_one_limit,10),
       expected_attendees: parseInt(ev.expected_attendees,10) || 0,
+      gift_show_on: ev.gift_show_on || 'no,maybe',
       thank_yes_message: ev.thank_yes_message || '',
       thank_decline_message: ev.thank_decline_message || '',
     };
@@ -688,8 +693,25 @@ function renderGiftRegistryPanel(c){
       <div class="field"><label>External Registry Link</label><input type="text" id="f_registry" placeholder="https://theknot.com/registry/..." value="${escapeHtml(ev.registry_url||'')}"></div>
       <div class="toggle-row"><input type="checkbox" id="f_cash_enabled" ${cashOn?'checked':''}><span style="font-size:13px;">Accept cash gifts</span></div>
       <div id="cashFieldsHolder"></div>
+      <div class="field" style="margin-top:16px;"><label>Show gifts to guests who answer</label>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;">
+          <label class="req-toggle" style="font-size:13px;color:var(--ink);"><input type="checkbox" class="giftAud" value="yes"> Yes</label>
+          <label class="req-toggle" style="font-size:13px;color:var(--ink);"><input type="checkbox" class="giftAud" value="no"> No</label>
+          <label class="req-toggle" style="font-size:13px;color:var(--ink);"><input type="checkbox" class="giftAud" value="maybe"> Maybe</label>
+        </div>
+        <div class="hint">Gifts appear under the thank-you message right after the guest sends their RSVP. Untick an answer to hide gifts from those guests.</div>
+      </div>
     </div>
   `);
+  const aud0 = giftAudience(ev);
+  document.querySelectorAll('.giftAud').forEach(cb=>{
+    cb.checked = aud0.has(cb.value);
+    cb.addEventListener('change', ()=>{
+      const picked = [...document.querySelectorAll('.giftAud')].filter(x=>x.checked).map(x=>x.value);
+      ev.gift_show_on = picked.length ? picked.join(',') : 'none';
+      dirty = true;
+    });
+  });
   document.getElementById('f_registry').addEventListener('input', e=>{ ev.registry_url = e.target.value; dirty = true; });
   document.getElementById('f_registry').addEventListener('blur', e=>{
     const v = e.target.value.trim();
@@ -983,9 +1005,15 @@ function renderField(q, container, answers, onChange){
 }
 
 /* ---- Dashboard tab (host, inside editor) ---- */
-function findAttendanceQuestion(qs){ return qs.find(q=>q.type==='yes_no_maybe' || q.type==='yes_no'); }
+function findAttendanceQuestion(qs){
+  const yn = qs.filter(q=>q.type==='yes_no_maybe' || q.type==='yes_no');
+  return yn.find(q=>/attend|coming|rsvp|join|make it/i.test(q.title)) || yn[0];
+}
 function findNameQuestion(qs){ return qs.find(q=> q.type==='short_answer' && /name/i.test(q.title)) || qs.find(q=>q.type==='short_answer'); }
-function findPartySizeQuestion(qs){ return qs.find(q=> q.type==='number'); }
+function findPartySizeQuestion(qs){
+  const nums = qs.filter(q=>q.type==='number');
+  return nums.find(q=>/number of guest|party size|total guest|how many guest|guests/i.test(q.title)) || (nums.length===1 ? nums[0] : null);
+}
 function responseStatus(r, qs){
   const aq = findAttendanceQuestion(qs); if(!aq) return 'attending';
   const val = r.answers[aq.id];
@@ -993,10 +1021,17 @@ function responseStatus(r, qs){
   return 'declined';
 }
 function responseName(r, qs){ const nq=findNameQuestion(qs); return (nq && r.answers[nq.id]) ? r.answers[nq.id] : 'Guest'; }
+let dashPartyMax = null; // set from the event's plus-one limit each time the dashboard is drawn
+function rawPartySize(r, qs){
+  const pq = findPartySizeQuestion(qs);
+  if(pq && r.answers[pq.id]) return Math.max(1, parseInt(r.answers[pq.id],10) || 1);
+  return 1;
+}
 function responsePartySize(r, qs, status){
   if(status!=='attending') return 0;
-  const pq=findPartySizeQuestion(qs); if(pq && r.answers[pq.id]) return Math.max(1, parseInt(r.answers[pq.id],10)||1);
-  return 1;
+  let n = rawPartySize(r, qs);
+  if(dashPartyMax !== null) n = Math.min(n, dashPartyMax); // never count more people than the plus-one limit allows
+  return n;
 }
 
 const STATUS_LABELS = {attending:'Attending', declined:'Not Attending', maybe:'Maybe'};
@@ -1031,25 +1066,30 @@ async function renderDashboardTab(c){
   c.innerHTML = `<div class="loading-note">Loading responses…</div>`;
   try{ const data = await apiGet(API+'/'+encodeURIComponent(ev.slug)+'/responses'); dashResponses = data.responses; }
   catch(e){ dashResponses = []; }
-  paintDashboard(c, dashResponses, form, true, ev.expected_attendees);
+  paintDashboard(c, dashResponses, form, true, ev.expected_attendees, ev);
 }
 function computeDashStats(responses, qs){
   let confirmed=0, declined=0, maybe=0, total=0;
   responses.forEach(r=>{ const s=responseStatus(r,qs); if(s==='attending'){ confirmed++; total+=responsePartySize(r,qs,s); } else if(s==='declined') declined++; else if(s==='maybe') maybe++; });
   return { total: responses.length, confirmed, declined, maybe, totalAttendees: total };
 }
-function paintDashboard(c, responses, qs, editable, expected){
+function paintDashboard(c, responses, qs, editable, expected, evt){
+  const pInfo = plusInfo(evt || {plus_one_policy:'unlimited'});
+  dashPartyMax = pInfo.unlimited ? null : 1 + pInfo.limit;
+  let overCount = 0;
+  if(dashPartyMax !== null) responses.forEach(r=>{ if(responseStatus(r,qs)==='attending' && rawPartySize(r,qs) > dashPartyMax) overCount++; });
   const stats = computeDashStats(responses, qs);
   const exp = parseInt(expected,10) || 0;
   const pct = exp > 0 ? Math.min(100, Math.round(stats.totalAttendees / exp * 100)) : 0;
   c.innerHTML = `
     <div class="stat-grid">
-      <div class="stat-card hero2"><div class="k">Confirmed Attendees</div><div class="v">${stats.totalAttendees}</div><div class="sub">${exp > 0 ? 'of ' + exp + ' expected' : 'from ' + stats.confirmed + ' attending response' + (stats.confirmed===1?'':'s')}</div></div>
+      <div class="stat-card hero2"><div class="k">Confirmed Attendees (people)</div><div class="v">${stats.totalAttendees}</div><div class="sub">from ${stats.confirmed} attending RSVP${stats.confirmed===1?'':'s'}${exp > 0 ? ' · of ' + exp + ' expected' : ''}</div></div>
       <div class="stat-card"><div class="k">Total Responses</div><div class="v">${stats.total}</div></div>
-      <div class="stat-card"><div class="k">Attending</div><div class="v">${stats.confirmed}</div></div>
+      <div class="stat-card"><div class="k">Attending RSVPs</div><div class="v">${stats.confirmed}</div></div>
       <div class="stat-card"><div class="k">Not Attending</div><div class="v">${stats.declined}</div></div>
       <div class="stat-card"><div class="k">Maybe</div><div class="v">${stats.maybe}</div></div>
     </div>
+    ${(editable && overCount > 0) ? `<div class="hint" style="margin:-8px 0 14px;">${overCount} response${overCount===1?'':'s'} listed more guests than your plus-one limit allows, so ${overCount===1?'it is':'they are'} counted as the maximum (${dashPartyMax}). Raise the limit under Details → Guest Numbers if that's not what you want.</div>` : ''}
     ${exp > 0 ? `<div class="progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><div class="cap"><span>${pct}% of expected guests confirmed</span><span>${Math.max(0, exp - stats.totalAttendees)} still to come</span></div></div>` : ''}
     <div class="panel">
       <h4>Responses</h4>
@@ -1214,7 +1254,7 @@ async function renderGuestView(slug){
         <div class="section-label">Kindly Respond</div>
         <div id="guestFormHolder"></div>
         <div class="thankyou hide" id="thankyouBlock"></div>
-        ${renderGiftsSectionHtml(e2)}
+        <div id="giftsSlot"></div>
       </div>
     </div>
   `;
@@ -1271,6 +1311,8 @@ async function renderGuestView(slug){
         const tb = document.getElementById('thankyouBlock');
         tb.innerHTML = thankYouHtml(msg, isYes);
         tb.classList.remove('hide');
+        const answerKey = status==='No' ? 'no' : status==='Maybe' ? 'maybe' : 'yes';
+        if(giftAudience(e2).has(answerKey)) document.getElementById('giftsSlot').innerHTML = renderGiftsSectionHtml(e2);
       }catch(err){
         submit.disabled = false; submit.textContent = 'Submit RSVP';
         alert('Something went wrong submitting your RSVP — please try again.');
@@ -1287,6 +1329,7 @@ function renderGiftsSectionHtml(e2){
   const methods = hasCash ? (JSON.parse(e2.payment_methods_json || '[]')) : [];
   const registryHref = hasRegistry ? (/^https?:\/\//i.test(e2.registry_url) ? e2.registry_url : 'https://' + e2.registry_url) : '';
   return `
+    <hr class="divider">
     <div class="section-label">Gifts</div>
     ${hasRegistry ? `<a class="gift-btn-link" href="${escapeHtml(registryHref)}" target="_blank" rel="noopener">View Our Registry ↗</a>` : ''}
     ${hasCash ? `
@@ -1295,7 +1338,6 @@ function renderGiftsSectionHtml(e2){
       ${methods.map(pm=>`<div class="pm-disp-row"><div><div class="pm-disp-name">${escapeHtml(pm.method)}</div><div class="pm-disp-sub">${escapeHtml(pm.accountName||'')}${pm.accountName&&pm.accountNumber?' · ':''}${escapeHtml(pm.accountNumber||'')}</div></div></div>`).join('')}
       ${e2.cash_gift_note ? `<div class="cash-note">${escapeHtml(e2.cash_gift_note)}</div>` : ''}
     </div>` : ''}
-    <hr class="divider">
   `;
 }
 function formatEventDate(d){ if(!d) return ''; try{ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }catch(e){ return d; } }
@@ -1334,7 +1376,7 @@ async function renderDashGate(slug){
         <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Viewing as ${escapeHtml(email)} · read-only</p>
         <div id="dashHolder"></div>
       `;
-      paintDashboard(document.getElementById('dashHolder'), responses, qs, false, e2.expected_attendees);
+      paintDashboard(document.getElementById('dashHolder'), responses, qs, false, e2.expected_attendees, e2);
     }catch(err){
       document.getElementById('gateError').textContent = 'Something went wrong loading this dashboard.';
       document.getElementById('gateError').classList.remove('hide');
