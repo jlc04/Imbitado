@@ -1,7 +1,7 @@
 // EleganteRSVP / Imbitado backend: ONE file that handles every /api/events... route.
 // Needs a D1 database bound to this Pages project with the variable name DB.
 
-const BUILD = '7';
+const BUILD = '8';
 const HEADERS = { 'Content-Type': 'application/json' };
 
 // Self-healing database: creates any missing table/column automatically, so no manual SQL is ever needed again.
@@ -222,6 +222,14 @@ export async function onRequest({ request, env, params }) {
       if (method === 'POST') {
         const body = await request.json().catch(() => ({}));
         const answers = body.answers || {};
+        // one RSVP per guest: refuse a second sign-up under the same name
+        const who = answerSummary(event, answers).name;
+        if (who) {
+          const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const { results: prev } = await DB.prepare('SELECT answers_json FROM responses WHERE event_id = ?').bind(event.id).all();
+          const dupe = prev.some((r) => { try { return norm(answerSummary(event, JSON.parse(r.answers_json)).name) === norm(who); } catch (e) { return false; } });
+          if (dupe) return json({ error: 'duplicate', message: 'We already have an RSVP under this name.' }, 409);
+        }
         const id = newId('r');
         const submittedAt = nowIso();
         await DB.prepare('INSERT INTO responses (id, event_id, answers_json, submitted_at) VALUES (?, ?, ?, ?)')
