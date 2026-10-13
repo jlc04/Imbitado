@@ -146,4 +146,259 @@ export async function onRequest({ request, env, params }) {
     const slug = segs[1] || null;
     const sub = segs[2] || null;
 
-    // ---------- /api/events ------
+    // ---------- /api/events ----------
+    if (!slug) {
+      if (method === 'GET') {
+        const { results } = await DB.prepare(
+          `SELECT e.id, e.slug, e.name, e.event_date, e.event_time, e.status, e.owner_email,
+                  (SELECT COUNT(*) FROM responses r WHERE r.event_id = e.id) AS response_count
+           FROM events e ORDER BY e.updated_at DESC`
+        ).all();
+        return json({ events: results });
+      }
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const name = (body.name || 'Untitled Event').trim();
+        const id = newId('ev');
+        let s = slugify(name);
+        const taken = await DB.prepare('SELECT id FROM events WHERE slug = ?').bind(s).first();
+        if (taken) s = s + '-' + Math.random().toString(36).slice(2, 6);
+        const now = nowIso();
+        const theme = JSON.stringify({ presetId: 'luxury', customColors: null });
+        const questions = JSON.stringify([
+          { id: 'q_name', type: 'short_answer', title: 'Full Name', required: true, help: '', options: [], condition: null },
+          { id: 'q_attend', type: 'yes_no_maybe', title: 'Will you attend?', required: true, help: '', options: [], condition: null },
+        ]);
+        await DB.prepare(
+          `INSERT INTO events (id, slug, name, event_date, event_time, venue_name, venue_address, theme_json, questions_json, status, owner_email, created_at, updated_at, plus_one_policy, plus_one_limit)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 'limited', 1)`
+        )
+          .bind(id, s, name, body.event_date || '', body.event_time || '', body.venue_name || '', body.venue_address || '',
+                theme, questions, body.owner_email || '', now, now)
+          .run();
+        const created = await DB.prepare('SELECT * FROM events WHERE id = ?').bind(id).first();
+        return json({ event: created }, 201);
+      }
+      return json({ error: 'method not allowed' }, 405);
+    }
+
+    const event = await DB.prepare('SELECT * FROM events WHERE slug = ?').bind(slug).first();
+    if (!event) return json({ error: 'not found' }, 404);
+
+    // ---------- /api/events/:slug ----------
+    if (!sub) {
+      if (method === 'GET') return json({ event, build: BUILD });
+      if (method === 'PUT') {
+        const b = await request.json().catch(() => ({}));
+        await DB.prepare(
+          `UPDATE events SET name=?, event_date=?, event_time=?, venue_name=?, venue_address=?,
+             theme_json=?, questions_json=?, status=?,
+             registry_url=?, cash_gift_enabled=?, cash_gift_title=?, cash_gift_note=?, payment_methods_json=?,
+             sheet_webhook_url=?, intro_message=?, plus_one_policy=?, plus_one_limit=?,
+             expected_attendees=?, thank_yes_message=?, thank_decline_message=?, gift_show_on=?, seating_json=?, updated_at=?
+           WHERE slug = ?`
+        )
+          .bind(
+            b.name ?? event.name, b.event_date ?? event.event_date, b.event_time ?? event.event_time,
+            b.venue_name ?? event.venue_name, b.venue_address ?? event.venue_address,
+            b.theme_json ?? event.theme_json, b.questions_json ?? event.questions_json,
+            b.status ?? event.status,
+            b.registry_url ?? event.registry_url, b.cash_gift_enabled ?? event.cash_gift_enabled,
+            b.cash_gift_title ?? event.cash_gift_title, b.cash_gift_note ?? event.cash_gift_note,
+            b.payment_methods_json ?? event.payment_methods_json,
+            b.sheet_webhook_url ?? event.sheet_webhook_url,
+            b.intro_message ?? event.intro_message, b.plus_one_policy ?? event.plus_one_policy, b.plus_one_limit ?? event.plus_one_limit,
+            b.expected_attendees ?? event.expected_attendees, b.thank_yes_message ?? event.thank_yes_message, b.thank_decline_message ?? event.thank_decline_message,
+            b.gift_show_on ?? event.gift_show_on,
+            b.seating_json ?? event.seating_json,
+            nowIso(), slug
+          )
+          .run();
+        if (b.seating_json) {
+          const cfg = sjParse(b.seating_json);
+          const { results } = await DB.prepare('SELECT seat_id FROM seat_assignments WHERE event_id = ?').bind(event.id).all();
+          for (const r of results) {
+            if (!seatValid(r.seat_id, cfg)) await DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND seat_id = ?').bind(event.id, r.seat_id).run();
+          }
+        }
+        const updated = await DB.prepare('SELECT * FROM events WHERE slug = ?').bind(slug).first();
+        return json({ event: updated });
+      }
+      if (method === 'DELETE') {
+        await DB.prepare('DELETE FROM seat_assignments WHERE event_id = ?').bind(event.id).run();
+        await DB.prepare('DELETE FROM responses WHERE event_id = ?').bind(event.id).run();
+        await DB.prepare('DELETE FROM dashboard_access WHERE event_id = ?').bind(event.id).run();
+        await DB.prepare('DELETE FROM events WHERE id = ?').bind(event.id).run();
+        return json({ ok: true });
+      }
+      return json({ error: 'method not allowed' }, 405);
+    }
+
+    // ---------- /api/events/:slug/responses ----------
+    if (sub === 'responses') {
+      // /api/events/:slug/responses/:id  -> remove one RSVP (only if it belongs to this event)
+      if (segs[3]) {
+        if (method === 'DELETE') {
+          await DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND rid = ?').bind(event.id, segs[3]).run();
+          await DB.prepare('DELETE FROM responses WHERE id = ? AND event_id = ?').bind(segs[3], event.id).run();
+          return json({ ok: true });
+        }
+        return json({ error: 'method not allowed' }, 405);
+      }
+      if (method === 'GET') {
+        const { results } = await DB.prepare(
+          'SELECT id, answers_json, submitted_at FROM responses WHERE event_id = ? ORDER BY submitted_at DESC'
+        ).bind(event.id).all();
+        return json({ responses: results.map((r) => ({ id: r.id, answers: JSON.parse(r.answers_json), submitted_at: r.submitted_at })) });
+      }
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const answers = body.answers || {};
+        // one RSVP per guest: refuse a second sign-up under the same name
+        const who = answerSummary(event, answers).name;
+        if (who) {
+          const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const { results: prev } = await DB.prepare('SELECT answers_json FROM responses WHERE event_id = ?').bind(event.id).all();
+          const dupe = prev.some((r) => { try { return norm(answerSummary(event, JSON.parse(r.answers_json)).name) === norm(who); } catch (e) { return false; } });
+          if (dupe) return json({ error: 'duplicate', message: 'We already have an RSVP under this name.' }, 409);
+        }
+        const id = newId('r');
+        const submittedAt = nowIso();
+        await DB.prepare('INSERT INTO responses (id, event_id, answers_json, submitted_at) VALUES (?, ?, ?, ?)')
+          .bind(id, event.id, JSON.stringify(answers), submittedAt).run();
+
+        // Best-effort spreadsheet mirror — never blocks or fails the RSVP if it errors.
+        if (event.sheet_webhook_url) {
+          try {
+            const qs = JSON.parse(event.questions_json || '[]');
+            const row = [submittedAt, ...qs
+              .filter((q) => !['section_divider', 'title_block'].includes(q.type))
+              .map((q) => { const v = answers[q.id]; return Array.isArray(v) ? v.join(', ') : (v || ''); })];
+            await fetch(event.sheet_webhook_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ row }),
+            });
+          } catch (err) {
+            console.error('Spreadsheet webhook failed:', err.message);
+          }
+        }
+        return json({ ok: true, id }, 201);
+      }
+      return json({ error: 'method not allowed' }, 405);
+    }
+
+    // ---------- /api/events/:slug/seats ----------
+    if (sub === 'seats') {
+      const cfg = sjParse(event.seating_json);
+      const now = nowIso();
+      if (method === 'GET') {
+        const q = new URL(request.url).searchParams;
+        const nm = q.get('name');
+        if (nm !== null) {
+          const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const { results } = await DB.prepare('SELECT id, answers_json FROM responses WHERE event_id = ?').bind(event.id).all();
+          const hits = results.filter((r) => { const a = JSON.parse(r.answers_json); return norm(answerSummary(event, a).name) === norm(nm) && partyInfo(event, a).attending; });
+          if (hits.length === 1) return json({ found: true, rid: hits[0].id });
+          return json({ found: false, ambiguous: hits.length > 1 });
+        }
+        const rid = q.get('rid');
+        const m = await seatMap(DB, event.id);
+        const mine = rid ? await mineFor(DB, event, rid) : null;
+        return json({
+          config: { enabled: cfg.enabled, guestPick: cfg.guestPick, layout: cfg.layout, count: cfg.count, perTable: cfg.perTable, names: cfg.names, blocked: cfg.blocked },
+          assign: m.assign, src: m.src, mine,
+        });
+      }
+      if (method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const op = b.op;
+        const ins = (sid, key, source, mode) =>
+          DB.prepare(`INSERT ${mode || ''} INTO seat_assignments (event_id, seat_id, person_key, rid, source, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+            .bind(event.id, sid, key, String(key).split('#')[0], source, now);
+
+        // ----- a guest choosing their own seats -----
+        if (op === 'guest_pick') {
+          if (!cfg.enabled || !cfg.guestPick) return json({ error: 'Seat choosing is not open for this event.' }, 403);
+          const rid = String(b.rid || '');
+          const mine = await mineFor(DB, event, rid);
+          if (!mine) return json({ error: 'We could not find your RSVP.' }, 404);
+          if (!mine.attending) return json({ error: 'Only guests who said Yes can choose seats.' }, 403);
+          if (mine.locked) return json({ error: 'The hosts have already arranged your seating.' }, 403);
+          const sids = [...new Set((Array.isArray(b.sids) ? b.sids : []).map(String))];
+          if (sids.length === 0 || sids.length > mine.party) return json({ error: 'Please choose between 1 and ' + mine.party + ' seat' + (mine.party === 1 ? '' : 's') + '.' }, 400);
+          for (const sid of sids) {
+            if (!seatValid(sid, cfg)) return json({ error: 'That seat does not exist.' }, 400);
+            if (cfg.blocked.includes(sid)) return json({ error: 'That seat is reserved.' }, 409);
+          }
+          try {
+            await DB.batch([
+              DB.prepare("DELETE FROM seat_assignments WHERE event_id = ? AND rid = ? AND source = 'guest'").bind(event.id, rid),
+              ...sids.map((sid, i) => ins(sid, rid + '#' + i, 'guest')),
+            ]);
+          } catch (err) {
+            const m = await seatMap(DB, event.id);
+            return json({ error: 'Someone just took one of those seats — please choose again.', assign: m.assign, src: m.src, mine: await mineFor(DB, event, rid) }, 409);
+          }
+          const m = await seatMap(DB, event.id);
+          return json({ ok: true, assign: m.assign, src: m.src, mine: await mineFor(DB, event, rid) });
+        }
+
+        // ----- the editor arranging seats -----
+        if (op === 'set') {
+          if (!seatValid(b.sid, cfg) || !/^[^#]+#\d+$/.test(String(b.key || ''))) return json({ error: 'bad seat' }, 400);
+          const rid = String(b.key).split('#')[0];
+          const ok = await DB.prepare('SELECT 1 AS x FROM responses WHERE id = ? AND event_id = ?').bind(rid, event.id).first();
+          if (!ok) return json({ error: 'unknown guest' }, 404);
+          await DB.batch([
+            DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND person_key = ?').bind(event.id, b.key),
+            DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND seat_id = ?').bind(event.id, b.sid),
+            ins(b.sid, b.key, 'editor'),
+          ]);
+        } else if (op === 'unset' || op === 'prune') {
+          const sids = op === 'unset' ? [b.sid] : (Array.isArray(b.sids) ? b.sids : []);
+          if (sids.length) await DB.batch(sids.map((sid) => DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND seat_id = ?').bind(event.id, String(sid))));
+        } else if (op === 'bulk') {
+          const pairs = (Array.isArray(b.pairs) ? b.pairs : []).filter((p) => Array.isArray(p) && seatValid(p[0], cfg) && /^[^#]+#\d+$/.test(String(p[1])));
+          if (pairs.length) await DB.batch(pairs.map((p) => ins(p[0], p[1], 'editor', 'OR IGNORE')));
+        } else if (op === 'clear') {
+          await DB.prepare('DELETE FROM seat_assignments WHERE event_id = ?').bind(event.id).run();
+        } else {
+          return json({ error: 'unknown operation' }, 400);
+        }
+        const m = await seatMap(DB, event.id);
+        return json({ ok: true, assign: m.assign, src: m.src });
+      }
+      return json({ error: 'method not allowed' }, 405);
+    }
+
+    // ---------- /api/events/:slug/access ----------
+    if (sub === 'access') {
+      if (method === 'GET') {
+        const { results } = await DB.prepare('SELECT email FROM dashboard_access WHERE event_id = ? ORDER BY added_at').bind(event.id).all();
+        return json({ emails: results.map((r) => r.email) });
+      }
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const email = (body.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) return json({ error: 'valid email required' }, 400);
+        const exists = await DB.prepare('SELECT id FROM dashboard_access WHERE event_id = ? AND email = ?').bind(event.id, email).first();
+        if (!exists) {
+          await DB.prepare('INSERT INTO dashboard_access (id, event_id, email, added_at) VALUES (?, ?, ?, ?)')
+            .bind(newId('acc'), event.id, email, nowIso()).run();
+        }
+        return json({ ok: true });
+      }
+      if (method === 'DELETE') {
+        const email = (new URL(request.url).searchParams.get('email') || '').trim().toLowerCase();
+        await DB.prepare('DELETE FROM dashboard_access WHERE event_id = ? AND email = ?').bind(event.id, email).run();
+        return json({ ok: true });
+      }
+      return json({ error: 'method not allowed' }, 405);
+    }
+
+    return json({ error: 'not found' }, 404);
+  } catch (err) {
+    return json({ error: String((err && err.message) || err) }, 500);
+  }
+}
