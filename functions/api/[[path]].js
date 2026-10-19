@@ -1,7 +1,7 @@
 // EleganteRSVP / Imbitado backend: ONE file that handles every /api/events... route.
 // Needs a D1 database bound to this Pages project with the variable name DB.
 
-const BUILD = '9';
+const BUILD = '10';
 const HEADERS = { 'Content-Type': 'application/json' };
 
 // Self-healing database: creates any missing table/column automatically, so no manual SQL is ever needed again.
@@ -236,6 +236,23 @@ export async function onRequest({ request, env, params }) {
 
     // ---------- /api/events/:slug/responses ----------
     if (sub === 'responses') {
+      // /api/events/:slug/responses/delete  -> remove SEVERAL RSVPs at once (only ones that belong to this event)
+      if (segs[3] === 'delete' && method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].slice(0, 450);
+        if (!ids.length) return json({ ok: true, deleted: 0 });
+        const stmts = [];
+        let deleted = 0;
+        for (let i = 0; i < ids.length; i += 90) {
+          const part = ids.slice(i, i + 90), ph = part.map(() => '?').join(',');
+          const found = await DB.prepare('SELECT COUNT(*) AS n FROM responses WHERE event_id = ? AND id IN (' + ph + ')').bind(event.id, ...part).first();
+          deleted += (found && found.n) || 0;
+          stmts.push(DB.prepare('DELETE FROM seat_assignments WHERE event_id = ? AND rid IN (' + ph + ')').bind(event.id, ...part));
+          stmts.push(DB.prepare('DELETE FROM responses WHERE event_id = ? AND id IN (' + ph + ')').bind(event.id, ...part));
+        }
+        await DB.batch(stmts);
+        return json({ ok: true, deleted });
+      }
       // /api/events/:slug/responses/:id  -> remove one RSVP (only if it belongs to this event)
       if (segs[3]) {
         if (method === 'DELETE') {
